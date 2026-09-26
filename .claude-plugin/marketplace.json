@@ -1,0 +1,16 @@
+{
+  "name": "gashira-e",
+  "owner": {
+    "name": "GASHIRA-E"
+  },
+  "metadata": {
+    "description": "GASHIRA-E の Claude Code プラグイン集"
+  },
+  "plugins": [
+    {
+      "name": "worklog",
+      "source": "./",
+      "description": "Claude の作業内容を人間が読める Markdown ログとして残し、セッションをまたいでプロジェクトの文脈を引き継ぐ"
+    }
+  ]
+}

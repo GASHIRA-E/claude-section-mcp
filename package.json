@@ -1,0 +1,45 @@
+{
+  "name": "claude-worklog-mcp",
+  "version": "0.1.0",
+  "description": "MCP server + Claude Code plugin that keeps a human-readable log of Claude’s work and carries project context across sessions",
+  "scripts": {
+    "build": "esbuild src/server.ts src/hook.ts --bundle --platform=node --format=esm --target=node20 --minify --outdir=dist --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
+    "typecheck": "tsc",
+    "test": "node --test test/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GASHIRA-E/claude-section-mcp.git"
+  },
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "worklog",
+    "plugin"
+  ],
+  "bugs": {
+    "url": "https://github.com/GASHIRA-E/claude-section-mcp/issues"
+  },
+  "homepage": "https://github.com/GASHIRA-E/claude-section-mcp#readme",
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.1",
+    "@types/node": "^26.6.3",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.5"
+  },
+  "type": "module",
+  "bin": {
+    "worklog-mcp": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    ".claude-plugin",
+    "skills",
+    "hooks"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}
