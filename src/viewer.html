@@ -169,6 +169,23 @@ main{min-width:0}
 .fold:hover{color:var(--accent)}
 .fold:focus-visible{outline:2px solid var(--accent)}
 
+/* ---------- tag graph ---------- */
+.graph-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
+.tag-graph{display:block;width:100%;height:auto}
+.tag-graph .edge{stroke:var(--line);stroke-linecap:round;transition:stroke .15s,opacity .15s}
+.tag-graph .node{cursor:pointer;outline:none}
+.tag-graph .node circle{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5;transition:opacity .15s,stroke-width .15s}
+.tag-graph .node.open circle{fill:var(--warn-soft);stroke:var(--warn)}
+.tag-graph .node text{font-family:var(--mono);font-size:12px;fill:var(--ink);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round;transition:opacity .15s}
+.tag-graph .node:hover circle,.tag-graph .node:focus-visible circle{stroke-width:3}
+.tag-graph.focusing .node:not(.lit) circle,.tag-graph.focusing .node:not(.lit) text{opacity:.25}
+.tag-graph.focusing .edge{opacity:.25}
+.tag-graph.focusing .edge.lit{opacity:1;stroke:var(--accent)}
+@media (prefers-reduced-motion:no-preference){
+  .tag-graph .node{animation:pop .5s cubic-bezier(.2,.9,.3,1.3) both;animation-delay:var(--d);transform-box:fill-box;transform-origin:center}
+  @keyframes pop{from{transform:scale(.6)}to{transform:scale(1)}}
+}
+
 aside{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:16px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
 .card h3{margin:0 0 8px;font-size:13px}
@@ -306,8 +323,139 @@ function listWithDays(posts, opts = {}) {
 
 function renderTags() {
   const max = TAGS[0]?.count || 1;
-  return `<div class="head"><div><h1>タグ</h1><p>タグを選ぶと、その話題の経緯を古い順にたどれます。</p></div></div>
+  return `<div class="head"><div><h1>タグ</h1><p>丸の大きさは記録の数、線は同じ記録に一緒に付いたタグ、黄色は未回答の確認がある話題です。丸を押すと、その話題の経緯をたどれます。</p></div></div>
+  ${TAGS.length > 1 ? `<div class="graph-wrap"><svg class="tag-graph" id="tagGraph" role="img" aria-label="タグのつながりの図"></svg></div>` : ""}
   <div class="rows">${TAGS.map(t => `<div class="row" data-tag="${esc(t.tag)}" tabindex="0"><div><div class="t">#${esc(t.tag)}</div><div class="bar"><i style="width:${Math.max(4, t.count / max * 100)}%"></i></div></div><div class="r">${t.count}件<br>${short(t.last)}</div></div>`).join("") || `<p class="empty">まだタグがありません。</p>`}</div>`;
+}
+
+const GRAPH_MAX_TAGS = 30;
+
+/** Tags as nodes, co-occurrence on the same post as weighted edges. */
+function tagNetwork() {
+  const tags = TAGS.slice(0, GRAPH_MAX_TAGS);
+  const index = new Map(tags.map((t, i) => [t.tag, i]));
+  const weights = new Map();
+  for (const p of POSTS) {
+    const ts = (p.tags || []).filter(t => index.has(t));
+    for (let a = 0; a < ts.length; a++) for (let b = a + 1; b < ts.length; b++) {
+      const key = [index.get(ts[a]), index.get(ts[b])].sort((x, y) => x - y).join("-");
+      weights.set(key, (weights.get(key) || 0) + 1);
+    }
+  }
+  const edges = [...weights].map(([k, w]) => { const [a, b] = k.split("-").map(Number); return {a, b, w}; });
+  const openTags = new Set(openQs.flatMap(p => p.tags || []));
+  const nodes = tags.map(t => ({...t, open: openTags.has(t.tag)}));
+  return {nodes, edges};
+}
+
+/** Small deterministic force layout: nodes repel, edges pull, a weak pull keeps everything centred. */
+function layoutNetwork({nodes, edges}, width, height) {
+  const n = nodes.length;
+  const pos = nodes.map((_, i) => {
+    const angle = (i / n) * Math.PI * 2;
+    return {x: Math.cos(angle) * width * 0.3, y: Math.sin(angle) * height * 0.3};
+  });
+  const k = Math.sqrt((width * height) / Math.max(n, 1)) * 0.55;
+  let temp = width / 8;
+  for (let step = 0; step < 320; step++) {
+    const disp = pos.map(() => ({x: 0, y: 0}));
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      const dx = pos[i].x - pos[j].x, dy = pos[i].y - pos[j].y;
+      const d = Math.max(Math.hypot(dx, dy), 0.01), f = (k * k) / d;
+      disp[i].x += (dx / d) * f; disp[i].y += (dy / d) * f;
+      disp[j].x -= (dx / d) * f; disp[j].y -= (dy / d) * f;
+    }
+    for (const {a, b, w} of edges) {
+      const dx = pos[a].x - pos[b].x, dy = pos[a].y - pos[b].y;
+      const d = Math.max(Math.hypot(dx, dy), 0.01), f = (d * d) / k * Math.min(1 + w * 0.3, 2.5);
+      disp[a].x -= (dx / d) * f; disp[a].y -= (dy / d) * f;
+      disp[b].x += (dx / d) * f; disp[b].y += (dy / d) * f;
+    }
+    for (let i = 0; i < n; i++) {
+      disp[i].x -= pos[i].x * 0.08; disp[i].y -= pos[i].y * 0.12;
+      const d = Math.max(Math.hypot(disp[i].x, disp[i].y), 0.01), m = Math.min(d, temp);
+      pos[i].x += (disp[i].x / d) * m; pos[i].y += (disp[i].y / d) * m;
+    }
+    temp *= 0.985;
+  }
+  // Fit into the box, leaving room for circles and the labels under them.
+  const xs = pos.map(p => p.x), ys = pos.map(p => p.y);
+  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const padX = 70, padTop = 34, padBottom = 44;
+  return pos.map(p => ({
+    x: padX + (maxX === minX ? 0.5 : (p.x - minX) / (maxX - minX)) * (width - padX * 2),
+    y: padTop + (maxY === minY ? 0.5 : (p.y - minY) / (maxY - minY)) * (height - padTop - padBottom),
+  }));
+}
+
+/** Rough rendered width of a 12px monospace label: CJK glyphs are about twice as wide as Latin ones. */
+function labelWidth(text) {
+  return [...text].reduce((w, ch) => w + (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 12 : 7.3), 0);
+}
+
+/** Nudge nodes apart until no circle-plus-label box overlaps another, staying inside the drawing. */
+function separateLabels(pos, radii, labels, width, height) {
+  const box = i => {
+    const half = Math.max(radii[i], labels[i] / 2) + 4;
+    return {l: pos[i].x - half, r: pos[i].x + half, t: pos[i].y - radii[i] - 4, b: pos[i].y + radii[i] + 20};
+  };
+  for (let round = 0; round < 120; round++) {
+    let moved = false;
+    for (let i = 0; i < pos.length; i++) for (let j = i + 1; j < pos.length; j++) {
+      const A = box(i), B = box(j);
+      const ox = Math.min(A.r, B.r) - Math.max(A.l, B.l), oy = Math.min(A.b, B.b) - Math.max(A.t, B.t);
+      if (ox <= 0 || oy <= 0) continue;
+      moved = true;
+      // Push along the axis that needs the smaller move.
+      if (ox < oy) { const d = (ox / 2 + 1) * (pos[i].x < pos[j].x ? -1 : 1); pos[i].x += d; pos[j].x -= d; }
+      else { const d = (oy / 2 + 1) * (pos[i].y < pos[j].y ? -1 : 1); pos[i].y += d; pos[j].y -= d; }
+    }
+    for (let i = 0; i < pos.length; i++) {
+      const half = Math.max(radii[i], labels[i] / 2) + 4;
+      pos[i].x = Math.min(width - half, Math.max(half, pos[i].x));
+      pos[i].y = Math.min(height - radii[i] - 20, Math.max(radii[i] + 6, pos[i].y));
+    }
+    if (!moved) break;
+  }
+  return pos;
+}
+
+function drawTagGraph() {
+  const svg = document.getElementById("tagGraph");
+  if (!svg) return;
+  const width = Math.max(320, Math.round(svg.parentElement.clientWidth));
+  const height = Math.round(width < 560 ? width * 1.1 : Math.min(460, Math.max(280, width * 0.62)));
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const net = tagNetwork();
+  const maxCount = Math.max(...net.nodes.map(t => t.count));
+  const maxW = Math.max(1, ...net.edges.map(e => e.w));
+  const radius = t => 7 + Math.sqrt(t.count / maxCount) * (width < 560 ? 12 : 17);
+  const pos = separateLabels(layoutNetwork(net, width, height), net.nodes.map(radius), net.nodes.map(t => labelWidth("#" + t.tag)), width, height);
+  const edges = net.edges.map(({a, b, w}) =>
+    `<line class="edge" data-a="${a}" data-b="${b}" x1="${pos[a].x.toFixed(1)}" y1="${pos[a].y.toFixed(1)}" x2="${pos[b].x.toFixed(1)}" y2="${pos[b].y.toFixed(1)}" style="stroke-width:${(1 + (w / maxW) * 4).toFixed(1)}"></line>`).join("");
+  const nodes = net.nodes.map((t, i) => {
+    const r = radius(t);
+    return `<g class="node${t.open ? " open" : ""}" data-tag="${esc(t.tag)}" data-i="${i}" tabindex="0" role="button" aria-label="#${esc(t.tag)}（${t.count}件）を開く" style="--d:${i * 40}ms">
+      <circle cx="${pos[i].x.toFixed(1)}" cy="${pos[i].y.toFixed(1)}" r="${r.toFixed(1)}"></circle>
+      <text x="${pos[i].x.toFixed(1)}" y="${(pos[i].y + r + 14).toFixed(1)}" text-anchor="middle">#${esc(t.tag)}</text>
+      <title>#${esc(t.tag)} ・ ${t.count}件${t.open ? " ・ 未回答の確認あり" : ""}</title></g>`;
+  }).join("");
+  svg.innerHTML = `<g class="edges">${edges}</g><g class="nodes">${nodes}</g>`;
+
+  // Hovering a tag lights up its neighbours.
+  const neighbours = i => new Set(net.edges.flatMap(e => e.a === i ? [e.b] : e.b === i ? [e.a] : []));
+  svg.querySelectorAll(".node").forEach(g => {
+    const i = Number(g.dataset.i);
+    const on = () => {
+      const near = neighbours(i);
+      svg.classList.add("focusing");
+      svg.querySelectorAll(".node").forEach(o => o.classList.toggle("lit", Number(o.dataset.i) === i || near.has(Number(o.dataset.i))));
+      svg.querySelectorAll(".edge").forEach(l => l.classList.toggle("lit", Number(l.dataset.a) === i || Number(l.dataset.b) === i));
+    };
+    const off = () => svg.classList.remove("focusing");
+    g.addEventListener("mouseenter", on); g.addEventListener("focus", on);
+    g.addEventListener("mouseleave", off); g.addEventListener("blur", off);
+  });
 }
 
 function renderTag(tag) {
@@ -474,6 +622,7 @@ function render() {
   const v = view.name;
   m.innerHTML = v === "tags" ? renderTags() : v === "tag" ? renderTag(view.tag) : v === "inbox" ? renderInbox()
     : v === "session" ? renderSession(view.id) : v === "thread" ? renderThread(view.id) : renderSessions();
+  if (v === "tags") drawTagGraph();
   const section = {tag: "tags", session: "sessions", thread: null}[v] || v;
   document.querySelectorAll(".nav [data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === section ? "page" : "false"));
 }
@@ -501,6 +650,12 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches("[tabindex='0']")) { e.preventDefault(); e.target.click(); }
 });
+let resizeTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (view.name === "tags") drawTagGraph(); }, 150);
+});
+
 renderAside();
 render();
 </script>
