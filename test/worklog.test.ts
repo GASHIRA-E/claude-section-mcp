@@ -195,3 +195,36 @@ describe("viewer", () => {
     assert.match(artifact, /"text":"\\u003c\/script>/);
   });
 });
+
+describe("summaries", () => {
+  it("summarizes only long prompts and replies, once, via patches", async () => {
+    const { summarizeSession, parseSummaries } = await import("../src/summarize.ts");
+    const session = await log.session(SID);
+    const longPrompt = await log.append(session, { author: "human", kind: "prompt", text: "レシートの写真から金額を読み取りたい。".repeat(10) });
+    await log.append(session, { author: "human", kind: "prompt", text: "短い指示" });
+    const longReply = await log.append(session, { author: "claude", kind: "reply", text: "実装しました。".repeat(40) });
+    await log.append(session, { author: "claude", kind: "decision", text: "長い決定".repeat(100) });
+
+    let asked = "";
+    const runner = async (prompt: string) => {
+      asked = prompt;
+      return `Sure!\n{"${longPrompt.id}": "レシート写真から金額を読み取りたい", "${longReply.id}": "実装を完了した", "bogus": 1}`;
+    };
+    assert.equal(await summarizeSession(log, session, runner), 2);
+    assert.match(asked, new RegExp(longPrompt.id));
+    assert.ok(!asked.includes("短い指示") && !asked.includes("長い決定"));
+
+    const posts = (await log.readSession(session)).posts;
+    assert.equal(posts.find((p) => p.id === longPrompt.id)?.summary, "レシート写真から金額を読み取りたい");
+    assert.equal(await summarizeSession(log, session, async () => assert.fail("nothing left to summarize")), 0);
+
+    assert.deepEqual(parseSummaries("no json here"), {});
+  });
+
+  it("asks the Stop hook caller to summarize when something is long", async () => {
+    await hook("UserPromptSubmit", { prompt: "短い" });
+    assert.equal((await hook("Stop", { last_assistant_message: "ok" })).summarize, undefined);
+    await hook("UserPromptSubmit", { prompt: "長い指示です。".repeat(30) });
+    assert.match((await hook("Stop", { last_assistant_message: "ok" })).summarize ?? "", /^2026-09-26_1330_1abd214d$/);
+  });
+});

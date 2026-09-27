@@ -1,6 +1,7 @@
 import path from "node:path";
 import { buildHookContext, truncate } from "./query.ts";
 import type { PendingItem, Worklog } from "./store.ts";
+import { needsSummary } from "./summarize.ts";
 import { writeViewer } from "./viewer.ts";
 
 export interface HookInput {
@@ -17,6 +18,8 @@ export interface HookInput {
 
 export interface HookResult {
   stdout?: string;
+  /** Session whose long prompts/replies should be summarized in the background. */
+  summarize?: string;
 }
 
 const PROMPT_MAX = 1000;
@@ -68,7 +71,8 @@ export async function handleHook(event: string, input: HookInput, log: Worklog, 
         await log.append(session, { author: "claude", kind: "reply", text: clip(input.last_assistant_message, REPLY_MAX) });
       }
       await writeViewer(log).catch(() => undefined);
-      return {};
+      const { posts } = await log.readSession(session);
+      return posts.some(needsSummary) ? { summarize: session } : {};
     }
     default:
       return {};
