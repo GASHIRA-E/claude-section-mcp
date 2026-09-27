@@ -170,7 +170,7 @@ server.registerTool(
   {
     title: "Build the log viewer",
     description:
-      "Regenerate the HTML viewer (feed, tag lookup, open questions, sessions). Returns `page` to open in a browser and `artifact`, a body-only copy suited to publishing as a claude.ai Artifact when working in the cloud.",
+      "Regenerate the HTML viewer (sessions as chats, tag lookup, open questions). Returns `page` to open in a browser and `artifact`, a body-only copy suited to publishing as a claude.ai Artifact when working in the cloud.",
     inputSchema: {},
   },
   async () => {

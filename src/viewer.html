@@ -197,10 +197,9 @@ aside{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex
 <div class="app">
   <nav class="nav" aria-label="表示切り替え">
     <div class="brand" id="brand"></div>
-    <button data-view="feed">フィード</button>
+    <button data-view="sessions">セッション</button>
     <button data-view="tags">タグ</button>
     <button data-view="inbox">要対応 <span class="count" id="inboxCount"></span></button>
-    <button data-view="sessions">セッション</button>
   </nav>
   <main id="main" aria-live="polite"></main>
   <aside>
@@ -254,7 +253,7 @@ function sessionInfo(meta) {
 const SESSIONS = DATA.sessions.map(sessionInfo).filter(s => s.posts.length).sort((a, b) => b.last.localeCompare(a.last));
 
 // ---------------------------------------------------------------- state
-let view = {name: "feed"};
+let view = {name: "sessions"};
 const openedFolds = new Set();
 
 const tagBtn = t => `<button class="tag" data-tag="${esc(t)}">#${esc(t)}</button>`;
@@ -303,11 +302,6 @@ function listWithDays(posts, opts = {}) {
     current = d;
     return sep + (p.author === "auto" ? compactHtml(p) : postHtml(p, opts));
   }).join("");
-}
-
-function renderFeed() {
-  return `<div class="head"><div><h1>フィード</h1><p>すべての記録を新しい順に表示します。決定と要確認は目立たせ、自動記録は1行に抑えています。</p></div></div>
-  <div class="feed">${listWithDays([...POSTS].reverse())}</div>`;
 }
 
 function renderTags() {
@@ -452,7 +446,7 @@ function renderSession(id) {
 
 function renderThread(id) {
   let root = byId[id];
-  if (!root) return renderFeed();
+  if (!root) return renderSessions();
   while (root.re && byId[root.re]) root = byId[root.re];
   const out = [];
   const walk = (p, depth) => { out.push(postHtml(p, {reply: depth > 0, focus: p.id === id, inThread: true, withDate: true})); repliesOf(p.id).forEach(c => walk(c, depth + 1)); };
@@ -479,8 +473,8 @@ function render() {
   const m = document.getElementById("main");
   const v = view.name;
   m.innerHTML = v === "tags" ? renderTags() : v === "tag" ? renderTag(view.tag) : v === "inbox" ? renderInbox()
-    : v === "sessions" ? renderSessions() : v === "session" ? renderSession(view.id) : v === "thread" ? renderThread(view.id) : renderFeed();
-  const section = {tag: "tags", session: "sessions", thread: backStack.at(-1)?.name === "feed" ? "feed" : null}[v] || v;
+    : v === "session" ? renderSession(view.id) : v === "thread" ? renderThread(view.id) : renderSessions();
+  const section = {tag: "tags", session: "sessions", thread: null}[v] || v;
   document.querySelectorAll(".nav [data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === section ? "page" : "false"));
 }
 function go(next) {
@@ -500,7 +494,7 @@ document.addEventListener("click", e => {
   }
   if (el.dataset.tag) return go({name: "tag", tag: el.dataset.tag});
   if (el.dataset.view) return go({name: el.dataset.view});
-  if (el.dataset.back) { view = backStack.pop() || {name: "feed"}; return render(); }
+  if (el.dataset.back) { view = backStack.pop() || {name: "sessions"}; return render(); }
   if (el.dataset.session) return go({name: "session", id: el.dataset.session});
   if (el.dataset.post && !e.target.closest("button,a,input")) return go({name: "thread", id: el.dataset.post});
 });
