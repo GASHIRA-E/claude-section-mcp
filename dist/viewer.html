@@ -1,0 +1,376 @@
+<title>Worklog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#F2F5F3;--surface:#FFFFFF;--surface-2:#F7F9F8;--ink:#15201B;--muted:#5A6660;--faint:#8A958F;--line:#DBE2DE;
+  --accent:#0D6B5F;--accent-soft:#DCEEEA;
+  --human:#A3431B;--human-soft:#F6E5DC;
+  --claude:#0D6B5F;--claude-soft:#DCEEEA;
+  --auto:#66716B;--auto-soft:#E8ECEA;
+  --blue:#3D59A8;--blue-soft:#E1E7F6;
+  --warn:#94600A;--warn-soft:#FAEFD6;
+  --danger:#B02A1E;--danger-soft:#FBE3DF;
+  --ok:#2F7A3A;--ok-soft:#E0F0E2;
+  --radius:10px;
+  --sans:"IBM Plex Sans JP","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0E1412;--surface:#151D1A;--surface-2:#111815;--ink:#E5ECE8;--muted:#9BA7A1;--faint:#6F7B75;--line:#25302C;
+    --accent:#56BCAC;--accent-soft:#163029;--human:#E3916A;--human-soft:#3A2419;--claude:#56BCAC;--claude-soft:#163029;
+    --auto:#9AA5A0;--auto-soft:#222B28;--blue:#93A9EA;--blue-soft:#1C2540;--warn:#E1B354;--warn-soft:#33290F;
+    --danger:#F08A7E;--danger-soft:#3B1814;--ok:#7CCB86;--ok-soft:#18301B;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E1412;--surface:#151D1A;--surface-2:#111815;--ink:#E5ECE8;--muted:#9BA7A1;--faint:#6F7B75;--line:#25302C;
+  --accent:#56BCAC;--accent-soft:#163029;--human:#E3916A;--human-soft:#3A2419;--claude:#56BCAC;--claude-soft:#163029;
+  --auto:#9AA5A0;--auto-soft:#222B28;--blue:#93A9EA;--blue-soft:#1C2540;--warn:#E1B354;--warn-soft:#33290F;
+  --danger:#F08A7E;--danger-soft:#3B1814;--ok:#7CCB86;--ok-soft:#18301B;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.65;padding-inline:16px}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+[hidden]{display:none!important}
+
+.app{max-width:1180px;margin:16px auto 32px;display:grid;grid-template-columns:200px minmax(0,1fr) 260px;gap:20px;align-items:start}
+
+.nav{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:2px}
+.brand{font-weight:700;font-size:15px;padding:6px 10px 12px;overflow-wrap:anywhere}
+.brand small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.nav button{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:8px;color:var(--muted)}
+.nav button:hover{background:var(--surface)}
+.nav button[aria-current="page"]{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:inset 0 0 0 1px var(--line)}
+.nav button:focus-visible{outline:2px solid var(--accent)}
+.count{font-family:var(--mono);font-size:11.5px;min-width:22px;text-align:center;padding:0 6px;border-radius:999px;background:var(--warn-soft);color:var(--warn)}
+
+main{min-width:0}
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:12px}
+.head h1{font-size:20px;margin:0;text-wrap:balance;line-height:1.3;overflow-wrap:anywhere}
+.head p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.search{flex:1 1 200px;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{cursor:pointer;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 11px;font-size:12.5px;color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.toggle{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted);cursor:pointer}
+
+.feed{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.day{padding:6px 16px;font-size:12px;color:var(--faint);background:var(--surface-2);border-top:1px solid var(--line);font-family:var(--mono)}
+.day:first-child{border-top:0}
+.post{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;padding:13px 16px;border-top:1px solid var(--line);cursor:pointer}
+.day+.post{border-top:0}
+.post:first-child{border-top:0}
+.post:hover{background:var(--surface-2)}
+.post.reply{padding-left:40px}
+.post.focus{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--accent)}
+.post.auto .body{color:var(--muted)}
+.av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px}
+.av.human{background:var(--human-soft);color:var(--human)}
+.av.claude{background:var(--claude-soft);color:var(--claude)}
+.av.auto{background:var(--auto-soft);color:var(--auto)}
+.meta{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;font-size:12.5px;color:var(--muted)}
+.meta .name{color:var(--ink);font-weight:500}
+.meta .id{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.kind{font-size:11.5px;font-weight:500;padding:0 8px;border-radius:999px;line-height:20px;white-space:nowrap}
+.k-prompt,.k-idea{background:var(--human-soft);color:var(--human)}
+.k-decision{background:var(--claude-soft);color:var(--claude)}
+.k-question{background:var(--warn-soft);color:var(--warn)}
+.k-answer,.k-result{background:var(--ok-soft);color:var(--ok)}
+.k-issue{background:var(--danger-soft);color:var(--danger)}
+.k-note,.k-activity{background:var(--auto-soft);color:var(--auto)}
+.k-summary{background:var(--blue-soft);color:var(--blue)}
+.body{margin:3px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
+.reason{margin:6px 0 0;font-size:13px;color:var(--muted);padding-left:10px;border-left:2px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere}
+.list{margin:6px 0 0;padding-left:1.2em;font-size:13px}
+.files{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
+.test-ok{color:var(--ok)}
+.test-ng{color:var(--danger)}
+.foot{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;margin-top:6px;font-size:12.5px}
+.tag{all:unset;cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--accent)}
+.tag:hover{text-decoration:underline}
+.tag:focus-visible{outline:2px solid var(--accent)}
+.stat{color:var(--faint);font-size:12px}
+.flag-open{font-size:12px;color:var(--warn);font-weight:500}
+.flag-done{font-size:12px;color:var(--ok)}
+.empty{padding:20px 16px;margin:0;color:var(--muted)}
+
+.rows{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding:12px 16px;border-top:1px solid var(--line);cursor:pointer;align-items:start}
+.row:first-child{border-top:0}
+.row:hover{background:var(--surface-2)}
+.row .t{font-family:var(--mono);color:var(--accent);font-weight:500;overflow-wrap:anywhere}
+.row .title{font-weight:500;overflow-wrap:anywhere}
+.row .s{color:var(--muted);font-size:13px;margin-top:2px;overflow-wrap:anywhere}
+.row .r{text-align:right;font-size:12px;color:var(--faint);white-space:nowrap;font-family:var(--mono)}
+.bar{height:4px;border-radius:2px;background:var(--accent-soft);margin-top:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.facts{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:var(--muted);margin:-4px 0 12px}
+.related{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;margin-bottom:14px;font-size:12.5px;color:var(--faint)}
+.btn{cursor:pointer;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 12px;font-size:12.5px}
+
+aside{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.card h3{margin:0 0 8px;font-size:13px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stats div{font-size:12px;color:var(--muted)}
+.stats b{display:block;font-family:var(--mono);font-size:20px;color:var(--ink);font-weight:500;line-height:1.2}
+.stats .warn b{color:var(--warn)}
+.cloud{display:flex;flex-wrap:wrap;gap:4px 10px}
+.note{font-size:12px;color:var(--faint);margin:0}
+
+@media (max-width:1040px){
+  .app{grid-template-columns:180px minmax(0,1fr)}
+  aside{grid-column:2;position:static}
+}
+@media (max-width:720px){
+  .app{grid-template-columns:minmax(0,1fr);gap:14px}
+  .nav{position:static;flex-direction:row;flex-wrap:wrap;gap:4px}
+  .brand{width:100%;padding:0 2px 4px}
+  .nav button{padding:6px 10px}
+  aside{grid-column:1}
+  .post{padding:12px}
+  .post.reply{padding-left:24px}
+}
+</style>
+
+<div class="app">
+  <nav class="nav" aria-label="表示切り替え">
+    <div class="brand" id="brand"></div>
+    <button data-view="feed">フィード</button>
+    <button data-view="tags">タグ</button>
+    <button data-view="inbox">要対応 <span class="count" id="inboxCount"></span></button>
+    <button data-view="sessions">セッション</button>
+  </nav>
+  <main id="main" aria-live="polite"></main>
+  <aside>
+    <div class="card"><h3>概要</h3><div class="stats" id="stats"></div></div>
+    <div class="card"><h3>よく使うタグ</h3><div class="cloud" id="cloud"></div></div>
+    <p class="note" id="generated"></p>
+  </aside>
+</div>
+
+<script>
+const DATA = /*__WORKLOG_DATA__*/null || {project:"sample",generated:new Date().toISOString(),sessions:[],posts:[]};
+const POSTS = DATA.posts;
+const byId = Object.fromEntries(POSTS.map(p => [p.id, p]));
+const AUTHORS = {human:{name:"あなた",av:"人"},claude:{name:"Claude",av:"C"},auto:{name:"自動記録",av:"自"}};
+const KINDS = {prompt:"指示",idea:"思いつき",decision:"決定",question:"要確認",answer:"回答",issue:"問題",result:"成果",note:"メモ",summary:"まとめ",activity:"変更"};
+const answered = new Set(POSTS.filter(p => p.kind === "answer" && p.re).map(p => p.re));
+const openQs = POSTS.filter(p => p.kind === "question" && !answered.has(p.id));
+const repliesOf = id => POSTS.filter(p => p.re === id);
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dfDate = new Intl.DateTimeFormat("ja-JP", {year:"numeric",month:"2-digit",day:"2-digit",weekday:"short"});
+const dfTime = new Intl.DateTimeFormat("ja-JP", {hour:"2-digit",minute:"2-digit"});
+const dfShort = new Intl.DateTimeFormat("ja-JP", {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+const day = ts => dfDate.format(new Date(ts));
+const time = ts => dfTime.format(new Date(ts));
+const short = ts => ts ? dfShort.format(new Date(ts)) : "";
+
+function tagStats(posts) {
+  const m = new Map();
+  for (const p of posts) for (const t of p.tags || []) {
+    const s = m.get(t) || {tag:t,count:0,first:p.ts,last:p.ts};
+    s.count++; if (p.ts < s.first) s.first = p.ts; if (p.ts > s.last) s.last = p.ts;
+    m.set(t, s);
+  }
+  return [...m.values()].sort((a, b) => b.count - a.count || b.last.localeCompare(a.last));
+}
+const TAGS = tagStats(POSTS);
+
+function sessionInfo(meta) {
+  const posts = POSTS.filter(p => p.session === meta.session);
+  const prompt = posts.find(p => p.kind === "prompt");
+  const summary = [...posts].reverse().find(p => p.kind === "summary");
+  const title = prompt ? prompt.text : summary ? summary.text : "（指示の記録なし）";
+  return {...meta, posts, title: title.length > 60 ? title.slice(0, 59) + "…" : title, summary, last: posts.at(-1)?.ts || meta.started};
+}
+const SESSIONS = DATA.sessions.map(sessionInfo).filter(s => s.posts.length).sort((a, b) => b.last.localeCompare(a.last));
+
+// ---------------------------------------------------------------- state
+let view = {name: "feed"};
+let filter = "all", query = "", showAuto = true;
+try { showAuto = localStorage.getItem("worklog.showAuto") !== "0"; } catch {}
+
+const tagBtn = t => `<button class="tag" data-tag="${esc(t)}">#${esc(t)}</button>`;
+
+function postHtml(p, opts = {}) {
+  const a = AUTHORS[p.author] || AUTHORS.auto;
+  const replies = repliesOf(p.id).length;
+  const files = p.files || [];
+  const bits = [];
+  if (p.reason) bits.push(`<p class="reason">理由: ${esc(p.reason)}</p>`);
+  if (p.next?.length) bits.push(`<ul class="list">${p.next.map(n => `<li>${esc(n)}</li>`).join("")}</ul>`);
+  if (files.length) bits.push(`<div class="files">${files.slice(0, 6).map(esc).join(", ")}${files.length > 6 ? ` ほか${files.length - 6}件` : ""}</div>`);
+  if (p.tests?.length) bits.push(`<div class="files">${p.tests.map(t => `<span class="${t.ok ? "test-ok" : "test-ng"}">${t.ok ? "✓" : "✗"}</span> ${esc(t.command)}`).join("<br>")}</div>`);
+  if (p.commands?.length) bits.push(`<div class="files">${p.commands.map(c => "$ " + esc(c)).join("<br>")}</div>`);
+  const flags = [];
+  if (p.kind === "question") flags.push(answered.has(p.id) ? `<span class="flag-done">回答済み</span>` : `<span class="flag-open">未解決</span>`);
+  if (p.re && !opts.inThread) flags.push(`<span class="stat">↳ ${esc(p.re)} への返信</span>`);
+  if (replies && !opts.inThread) flags.push(`<span class="stat">返信 ${replies}</span>`);
+  const foot = [...(p.tags || []).map(tagBtn), ...flags];
+  return `<article class="post ${esc(p.author)}${opts.reply ? " reply" : ""}${opts.focus ? " focus" : ""}" data-post="${esc(p.id)}" tabindex="0">
+    <div class="av ${esc(p.author)}" aria-hidden="true">${a.av}</div>
+    <div>
+      <div class="meta"><span class="name">${a.name}</span><span class="kind k-${esc(p.kind)}">${KINDS[p.kind] || esc(p.kind)}</span><span class="mono">${opts.withDate ? short(p.ts) : time(p.ts)}</span><span class="id">${esc(p.id)}</span></div>
+      ${p.text ? `<p class="body">${esc(p.text)}</p>` : ""}
+      ${bits.join("")}
+      ${foot.length ? `<div class="foot">${foot.join("")}</div>` : ""}
+    </div>
+  </article>`;
+}
+
+function listWithDays(posts, opts = {}) {
+  if (!posts.length) return `<p class="empty">該当する投稿はありません。</p>`;
+  let current = "";
+  return posts.map(p => {
+    const d = day(p.ts);
+    const sep = d !== current ? `<div class="day">${d}</div>` : "";
+    current = d;
+    return sep + postHtml(p, opts);
+  }).join("");
+}
+
+function matches(p) {
+  if (!showAuto && p.author === "auto") return false;
+  if (filter === "open" && !(p.kind === "question" && !answered.has(p.id))) return false;
+  if (["human","claude","auto"].includes(filter) && p.author !== filter) return false;
+  if (["decision","question","result","issue","summary"].includes(filter) && p.kind !== filter) return false;
+  if (query) {
+    const q = query.toLowerCase();
+    const hay = [p.text, p.reason, ...(p.tags || []), ...(p.files || []), ...(p.next || []), ...(p.commands || []), p.id].join("\n").toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
+  return true;
+}
+
+const FILTERS = [["all","すべて"],["human","あなた"],["claude","Claude"],["auto","自動記録"],["decision","決定"],["issue","問題"],["summary","まとめ"],["open","未解決"]];
+function autoToggle() {
+  return `<label class="toggle"><input type="checkbox" id="showAuto" ${showAuto ? "checked" : ""}> 自動記録を表示</label>`;
+}
+
+function renderFeed() {
+  const list = [...POSTS].reverse().filter(matches);
+  return `<div class="head"><div><h1>フィード</h1><p>指示・決定・変更を新しい順に表示します。</p></div></div>
+  <div class="tools"><input class="search" id="q" type="search" placeholder="投稿・タグ・ファイル名で検索" value="${esc(query)}" aria-label="検索">${autoToggle()}</div>
+  <div class="chips" role="group" aria-label="絞り込み">${FILTERS.map(([v, l]) => `<button class="chip" data-filter="${v}" aria-pressed="${filter === v}">${l}</button>`).join("")}</div>
+  <div class="feed" id="feedList">${listWithDays(list)}</div>`;
+}
+
+function renderTags() {
+  const max = TAGS[0]?.count || 1;
+  return `<div class="head"><div><h1>タグ</h1><p>タグを選ぶと、その話題の経緯を古い順にたどれます。</p></div></div>
+  <div class="rows">${TAGS.map(t => `<div class="row" data-tag="${esc(t.tag)}" tabindex="0"><div><div class="t">#${esc(t.tag)}</div><div class="bar"><i style="width:${Math.max(4, t.count / max * 100)}%"></i></div></div><div class="r">${t.count}件<br>${short(t.last)}</div></div>`).join("") || `<p class="empty">まだタグがありません。</p>`}</div>`;
+}
+
+function renderTag(tag) {
+  const direct = new Set(POSTS.filter(p => (p.tags || []).includes(tag)).map(p => p.id));
+  const posts = POSTS.filter(p => direct.has(p.id) || (p.kind === "answer" && direct.has(p.re)));
+  const stat = TAGS.find(t => t.tag === tag);
+  const related = tagStats(POSTS.filter(p => direct.has(p.id)).map(p => ({...p, tags: p.tags.filter(t => t !== tag)}))).slice(0, 12);
+  const open = posts.filter(p => p.kind === "question" && !answered.has(p.id)).length;
+  return `<div class="head"><div><h1 class="mono">#${esc(tag)}</h1></div><button class="btn" data-view="tags">タグ一覧へ</button></div>
+  <div class="facts"><span>${stat ? stat.count : 0}件</span><span>${stat ? short(stat.first) + " 〜 " + short(stat.last) : ""}</span>${open ? `<span class="flag-open">未解決 ${open}件</span>` : ""}</div>
+  ${related.length ? `<div class="related">関連タグ ${related.map(t => tagBtn(t.tag)).join("")}</div>` : ""}
+  <div class="feed">${listWithDays(posts)}</div>`;
+}
+
+function renderInbox() {
+  return `<div class="head"><div><h1>要対応</h1><p>Claude から人間への確認事項のうち、まだ回答していないものです。Claude との会話で返事をすると、回答として記録されます。</p></div></div>
+  <div class="feed">${openQs.length ? [...openQs].reverse().map(p => postHtml(p, {withDate: true})).join("") : `<p class="empty">未解決の確認事項はありません。</p>`}</div>`;
+}
+
+function renderSessions() {
+  return `<div class="head"><div><h1>セッション</h1><p>Claude が作業した単位の一覧です。</p></div></div>
+  <div class="rows">${SESSIONS.map(s => `<div class="row" data-session="${esc(s.session)}" tabindex="0"><div><div class="title">${esc(s.title)}</div>
+    <div class="s">${s.summary ? "まとめ: " + esc(s.summary.text.slice(0, 80)) : s.posts.length + "件の投稿"}${s.branch ? ` ・ <span class="mono">${esc(s.branch)}</span>` : ""}</div></div>
+    <div class="r">${short(s.started)}<br>${s.posts.length}件</div></div>`).join("") || `<p class="empty">まだセッションがありません。</p>`}</div>`;
+}
+
+function renderSession(id) {
+  const s = SESSIONS.find(x => x.session === id);
+  if (!s) return renderSessions();
+  const posts = s.posts.filter(p => showAuto || p.author !== "auto");
+  return `<div class="head"><div><h1>${esc(s.title)}</h1><p class="mono">${short(s.started)}${s.branch ? " ・ " + esc(s.branch) : ""}</p></div><button class="btn" data-view="sessions">一覧へ</button></div>
+  <div class="tools">${autoToggle()}</div>
+  <div class="feed">${listWithDays(posts)}</div>`;
+}
+
+function renderThread(id) {
+  let root = byId[id];
+  if (!root) return renderFeed();
+  while (root.re && byId[root.re]) root = byId[root.re];
+  const out = [];
+  const walk = (p, depth) => { out.push(postHtml(p, {reply: depth > 0, focus: p.id === id, inThread: true, withDate: true})); repliesOf(p.id).forEach(c => walk(c, depth + 1)); };
+  walk(root, 0);
+  return `<div class="head"><div><h1>スレッド</h1><p>返信のつながりを表示しています。</p></div><button class="btn" data-back="1">戻る</button></div>
+  <div class="feed">${out.join("")}</div>`;
+}
+
+function renderAside() {
+  document.getElementById("brand").innerHTML = `${esc(DATA.project)}<small>作業ログ</small>`;
+  document.getElementById("stats").innerHTML = `
+    <div><b>${POSTS.filter(p => p.author !== "auto").length}</b>投稿</div>
+    <div><b>${TAGS.length}</b>タグ</div>
+    <div class="warn"><b>${openQs.length}</b>未解決</div>
+    <div><b>${SESSIONS.length}</b>セッション</div>`;
+  document.getElementById("cloud").innerHTML = TAGS.slice(0, 16).map(t => tagBtn(t.tag)).join("") || `<span class="note">まだありません</span>`;
+  document.getElementById("generated").textContent = `生成: ${short(DATA.generated)}`;
+  document.getElementById("inboxCount").textContent = openQs.length || "";
+  document.getElementById("inboxCount").hidden = !openQs.length;
+}
+
+const backStack = [];
+function render() {
+  const m = document.getElementById("main");
+  const v = view.name;
+  m.innerHTML = v === "tags" ? renderTags() : v === "tag" ? renderTag(view.tag) : v === "inbox" ? renderInbox()
+    : v === "sessions" ? renderSessions() : v === "session" ? renderSession(view.id) : v === "thread" ? renderThread(view.id) : renderFeed();
+  const section = {tag: "tags", session: "sessions", thread: backStack.at(-1)?.name === "feed" ? "feed" : null}[v] || v;
+  document.querySelectorAll(".nav [data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === section ? "page" : "false"));
+}
+function go(next) {
+  backStack.push(view);
+  view = next;
+  render();
+  window.scrollTo(0, 0);
+}
+
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-tag],[data-filter],[data-view],[data-post],[data-session],[data-back]");
+  if (!el) return;
+  if (el.dataset.tag) return go({name: "tag", tag: el.dataset.tag});
+  if (el.dataset.filter) { filter = el.dataset.filter; return render(); }
+  if (el.dataset.view) return go({name: el.dataset.view});
+  if (el.dataset.back) { view = backStack.pop() || {name: "feed"}; return render(); }
+  if (el.dataset.session) return go({name: "session", id: el.dataset.session});
+  if (el.dataset.post && !e.target.closest("button,a,input")) return go({name: "thread", id: el.dataset.post});
+});
+document.addEventListener("keydown", e => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches("[tabindex='0']")) { e.preventDefault(); e.target.click(); }
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "q") {
+    query = e.target.value;
+    document.getElementById("feedList").innerHTML = listWithDays([...POSTS].reverse().filter(matches));
+  }
+});
+document.addEventListener("change", e => {
+  if (e.target.id === "showAuto") {
+    showAuto = e.target.checked;
+    try { localStorage.setItem("worklog.showAuto", showAuto ? "1" : "0"); } catch {}
+    render();
+  }
+});
+
+renderAside();
+render();
+</script>

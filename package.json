@@ -1,9 +1,9 @@
 {
   "name": "claude-worklog-mcp",
-  "version": "0.1.0",
-  "description": "MCP server + Claude Code plugin that keeps a human-readable log of Claude’s work and carries project context across sessions",
+  "version": "0.2.0",
+  "description": "Claude Code plugin that keeps a tag-searchable work log of what Claude did and why, and hands it to the next session",
   "scripts": {
-    "build": "esbuild src/server.ts src/hook.ts --bundle --platform=node --format=esm --target=node20 --minify --outdir=dist --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
+    "build": "esbuild src/server.ts src/hook.ts --bundle --platform=node --format=esm --target=node20 --minify --outdir=dist --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" && cp src/viewer.html dist/viewer.html",
     "typecheck": "tsc",
     "test": "node --test test/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build"

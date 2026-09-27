@@ -3,27 +3,26 @@ import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { buildContext } from "./context.ts";
-import { END_STATUSES, ENTRY_KINDS, PROJECT_SECTION_KEYS, resolveLang } from "./labels.ts";
-import { WorklogStore } from "./store.ts";
+import { openWorklog, timeZone } from "./config.ts";
+import { buildContext, openQuestions, postsForTag, relatedTags, renderPost, search, tagStats } from "./query.ts";
+import { CLAUDE_KINDS, type Worklog } from "./store.ts";
+import { writeViewer } from "./viewer.ts";
 
-const VERSION = "0.1.0";
-/** How recently an unfinished session must have been written to for a restarted server to resume it. */
-const RESUME_WINDOW_MS = Number(process.env.WORKLOG_RESUME_MINUTES ?? 120) * 60_000;
+const VERSION = "0.2.0";
 
-const INSTRUCTIONS = `Keeps a human-readable log of Claude's work in .worklog/ inside the project, so people can follow what happened (even in long autonomous runs) and later sessions can pick up the project's history.
-- At the start of a task: call worklog_get_context, then worklog_start_session.
-- While working: call worklog_log at meaningful milestones — decisions (with the reason), problems, results, and anything a human should check (kind "question"). Write for a teammate who was not watching.
-- At the end: call worklog_end_session with a summary and next steps, and keep PROJECT.md current with worklog_update_project.`;
+const INSTRUCTIONS = `Work log for this project, stored in .worklog/ and committed with the code. Humans read it later to see what Claude did and why; future Claude sessions read it to pick up the project's history.
+- Your prompts, file changes and test runs are recorded automatically by hooks. You record the meaning: decisions with their reasons, problems, results, questions for the human, and summaries — via worklog_post.
+- Tag every post by topic (feature, component, concern). Reuse existing tags; worklog_context lists them.
+- When a question is answered, record it with worklog_answer.
+- Before working on a topic, worklog_tag shows how it got to where it is.`;
 
 const server = new McpServer({ name: "worklog", version: VERSION }, { instructions: INSTRUCTIONS });
 
-let store: WorklogStore | undefined;
-let currentSession: string | undefined;
+let log: Worklog | undefined;
 
-/** Resolve the project root: explicit env var, then the client's MCP roots, then the working directory. */
-async function getStore(): Promise<WorklogStore> {
-  if (store) return store;
+/** Project root: explicit env var, then the client's MCP roots, then the working directory. */
+async function getLog(): Promise<Worklog> {
+  if (log) return log;
   let root = process.env.WORKLOG_ROOT;
   if (!root && server.server.getClientCapabilities()?.roots) {
     try {
@@ -31,18 +30,16 @@ async function getStore(): Promise<WorklogStore> {
       const first = roots.find((r) => r.uri.startsWith("file://"));
       if (first) root = fileURLToPath(first.uri);
     } catch {
-      // Fall through to the environment-based defaults.
+      // Fall back to the environment below.
     }
   }
-  root ??= process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  store = new WorklogStore(root, { lang: resolveLang(process.env.WORKLOG_LANG), timeZone: process.env.WORKLOG_TZ || undefined });
-  return store;
+  log = openWorklog(root ?? (process.env.CLAUDE_PROJECT_DIR || process.cwd()));
+  return log;
 }
 
-/** The session entries go to; resumes a recent unfinished one after a server restart. */
-async function activeSession(s: WorklogStore): Promise<string | undefined> {
-  currentSession ??= await s.findResumableSession(RESUME_WINDOW_MS);
-  return currentSession;
+/** Hooks key sessions by Claude's session id; use it too when Claude Code passes it down. */
+async function currentSession(l: Worklog): Promise<string> {
+  return l.session(process.env.CLAUDE_CODE_SESSION_ID || undefined);
 }
 
 function text(t: string) {
@@ -53,119 +50,97 @@ function error(t: string) {
   return { content: [{ type: "text" as const, text: t }], isError: true };
 }
 
+const tagsSchema = z.array(z.string()).describe("Topic tags without '#', e.g. ['ログイン', 'API']. Reuse existing tags (see worklog_context).");
+
 server.registerTool(
-  "worklog_get_context",
+  "worklog_context",
   {
-    title: "Get project work history",
+    title: "Get work history",
     description:
-      "Read the project notes (.worklog/PROJECT.md) and the summaries, open questions and next steps of recent sessions. Call this before starting work so you know what previous sessions did and what is still pending.",
+      "Hand-off from previous sessions: open questions for the human, the last summary and its next steps, tags in use, and recent posts. Call it when starting a task.",
+    inputSchema: { recent: z.number().int().min(0).max(100).default(20).describe("How many recent posts to include.") },
+    annotations: { readOnlyHint: true },
+  },
+  async ({ recent }) => {
+    const l = await getLog();
+    const { posts, sessions } = await l.readAll();
+    return text(buildContext(posts, sessions, { recent, currentSession: await l.latestSession(), timeZone }));
+  },
+);
+
+server.registerTool(
+  "worklog_post",
+  {
+    title: "Post to the work log",
+    description: [
+      "Record something meaningful about the work, for a human reading later and for future sessions. Post at milestones, not for every step.",
+      "Kinds: decision = a choice and why (put alternatives and the why in `reason`); question = something the human should check or decide (listed as open until answered);",
+      "result = something done or verified; issue = a problem or failure; idea = an idea or request worth keeping; note = anything else;",
+      "summary = wrap-up of a task with `next_steps` (shown to the next session).",
+      "Write in the user's language, for someone who did not watch the session.",
+    ].join(" "),
     inputSchema: {
-      sessions: z.number().int().min(0).max(20).default(3).describe("How many recent sessions to include."),
+      kind: z.enum(CLAUDE_KINDS),
+      text: z.string().min(1).describe("The post itself. Short paragraphs; Markdown is fine."),
+      tags: tagsSchema,
+      reason: z.string().optional().describe("Why — required in spirit for decisions."),
+      files: z.array(z.string()).optional().describe("Relevant paths, relative to the project root."),
+      reply_to: z.string().optional().describe("ID of the post this follows up on (e.g. the idea a decision implements)."),
+      next_steps: z.array(z.string()).optional().describe("For summaries: concrete follow-ups."),
+    },
+  },
+  async ({ kind, text: body, tags, reason, files, reply_to, next_steps }) => {
+    const l = await getLog();
+    if (reply_to && !(await l.readAll()).posts.some((p) => p.id === reply_to)) return error(`No post with id ${reply_to}.`);
+    const post = await l.append(await currentSession(l), { author: "claude", kind, text: body, tags, reason, files, re: reply_to, next: next_steps });
+    const note = post.tags.length === 0 && kind !== "summary" ? " (no tags — consider tagging so it can be looked up later)" : "";
+    return text(`Posted ${post.id}${post.tags.length ? ` ${post.tags.map((t) => `#${t}`).join(" ")}` : ""}${note}`);
+  },
+);
+
+server.registerTool(
+  "worklog_answer",
+  {
+    title: "Record an answer",
+    description: "Record the human's answer to an open question (by its id) so it stops showing as open. Follow up with a decision post if the answer settles something.",
+    inputSchema: {
+      question_id: z.string().min(1),
+      answer: z.string().min(1).describe("The answer, as the human gave it (summarised if long)."),
+    },
+  },
+  async ({ question_id, answer }) => {
+    const l = await getLog();
+    const question = (await l.readAll()).posts.find((p) => p.id === question_id);
+    if (!question) return error(`No post with id ${question_id}.`);
+    if (question.kind !== "question") return error(`${question_id} is a ${question.kind}, not a question.`);
+    const post = await l.append(await currentSession(l), { author: "claude", kind: "answer", text: answer, re: question_id, tags: question.tags });
+    return text(`Recorded answer ${post.id} to ${question_id}.`);
+  },
+);
+
+server.registerTool(
+  "worklog_tag",
+  {
+    title: "Look up a topic",
+    description: "Reverse lookup by tag: every post about a topic in time order (ideas, decisions and their reasons, questions and answers, results), plus related tags. Use it to learn how something came to be before changing it.",
+    inputSchema: {
+      tag: z.string().min(1).describe("Tag with or without '#'."),
+      include_auto: z.boolean().default(false).describe("Include automatic activity records."),
     },
     annotations: { readOnlyHint: true },
   },
-  async ({ sessions }) => {
-    const s = await getStore();
-    return text(await buildContext(s, { sessions, currentSession: await activeSession(s) }));
-  },
-);
-
-server.registerTool(
-  "worklog_start_session",
-  {
-    title: "Start a work session",
-    description:
-      "Open a new session log for the task you are about to do. Creates .worklog/ on first use. If another session from this conversation is still open it is closed as partially done.",
-    inputSchema: {
-      title: z.string().min(1).describe("Short title of the task, e.g. 'ログイン画面のバリデーション追加'. Write in the user's language."),
-      goal: z.string().optional().describe("What this session is meant to achieve and why — the request as a human would describe it."),
-      branch: z.string().optional().describe("Git branch being worked on. Detected automatically when omitted."),
-    },
-  },
-  async ({ title, goal, branch }) => {
-    const s = await getStore();
-    const previous = await activeSession(s);
-    if (previous) await s.autoClose(previous);
-    const info = await s.startSession({ title, goal, branch });
-    currentSession = info.file;
-    return text(
-      [`Started session: .worklog/sessions/${info.file}`, previous ? `Closed the unfinished session ${previous} as partially done.` : ""]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  },
-);
-
-server.registerTool(
-  "worklog_log",
-  {
-    title: "Log a work entry",
-    description: [
-      "Append an entry to the current session log. Log milestones, not every command: what you did and why, so a human skimming the log later understands the flow.",
-      "Kinds: task = work done; decision = a choice you made (put the why in `reason`); issue = a problem or failure hit;",
-      "result = something finished/verified (tests passing, feature done); question = something a human should check or decide (collected into the session's review list);",
-      "note = anything else worth remembering. Starts a session automatically if none is open.",
-    ].join(" "),
-    inputSchema: {
-      kind: z.enum(ENTRY_KINDS).describe("Entry type."),
-      summary: z.string().min(1).describe("One-line headline, in the user's language."),
-      details: z.string().optional().describe("Markdown body: what was done, how, and anything notable. Keep it readable for a human."),
-      reason: z.string().optional().describe("Why — especially for decisions: alternatives considered and why this one."),
-      files: z.array(z.string()).optional().describe("Relevant file paths, relative to the project root."),
-    },
-  },
-  async (entry) => {
-    const s = await getStore();
-    let file = await activeSession(s);
-    let note = "";
-    if (!file) {
-      const info = await s.startSession({ title: entry.summary });
-      file = currentSession = info.file;
-      note = ` (no session was open, so started ${info.file})`;
-    }
-    await s.appendEntry(file, entry);
-    return text(`Logged ${entry.kind} to .worklog/sessions/${file}${note}`);
-  },
-);
-
-server.registerTool(
-  "worklog_end_session",
-  {
-    title: "End the work session",
-    description:
-      "Close the current session with a human-readable summary, next steps and items needing review. Call when the task is done or you are stopping. Entries logged with kind 'question' are added to the review list automatically. Afterwards, update PROJECT.md (worklog_update_project) if the project's status, decisions or open tasks changed.",
-    inputSchema: {
-      summary: z.string().min(1).describe("Markdown summary of what was accomplished, what changed, and the current state. Write it for someone who did not follow the session."),
-      status: z.enum(END_STATUSES).describe("completed = goal reached; partial = some work remains; blocked = cannot continue without help."),
-      next_steps: z.array(z.string()).optional().describe("Concrete follow-ups for the next session or a human."),
-      needs_review: z.array(z.string()).optional().describe("Extra points a human should check or decide, beyond logged questions."),
-    },
-  },
-  async ({ summary, status, next_steps, needs_review }) => {
-    const s = await getStore();
-    const file = await activeSession(s);
-    if (!file) return error("No open session to end. Start one with worklog_start_session.");
-    const info = await s.endSession(file, { summary, status, nextSteps: next_steps, needsReview: needs_review });
-    currentSession = undefined;
-    return text(`Ended session .worklog/sessions/${info.file} (${status}). Consider updating PROJECT.md with worklog_update_project.`);
-  },
-);
-
-server.registerTool(
-  "worklog_update_project",
-  {
-    title: "Update project notes",
-    description: `Edit a section of .worklog/PROJECT.md, the long-lived project summary shared across sessions. Standard sections: ${PROJECT_SECTION_KEYS.join(", ")} (overview = what the project is; status = where things stand now; decisions = design choices and why; todos = open tasks and known issues; notes = anything else). Any other name creates a custom section. Use 'replace' for status-like sections and 'append' for logs such as decisions.`,
-    inputSchema: {
-      section: z.string().min(1).describe(`One of ${PROJECT_SECTION_KEYS.join(", ")}, or a custom heading.`),
-      content: z.string().min(1).describe("Markdown content for the section, in the user's language."),
-      mode: z.enum(["replace", "append"]).default("replace"),
-    },
-  },
-  async ({ section, content, mode }) => {
-    const s = await getStore();
-    const heading = await s.updateProject(section, content, mode);
-    return text(`Updated "${heading}" in .worklog/PROJECT.md (${mode}).`);
+  async ({ tag, include_auto }) => {
+    const { posts } = await (await getLog()).readAll();
+    const name = tag.replace(/^[#＃]/, "").trim();
+    const known = tagStats(posts).find((t) => t.tag.normalize("NFKC").toLowerCase() === name.normalize("NFKC").toLowerCase());
+    if (!known) return text(`No posts tagged #${name}. Tags in use: ${tagStats(posts).map((t) => `#${t.tag}`).join(" ") || "(none)"}`);
+    const list = postsForTag(posts, known.tag).filter((p) => include_auto || p.author !== "auto");
+    const related = relatedTags(posts, known.tag).slice(0, 10);
+    const open = openQuestions(list);
+    const head = [`# #${known.tag} — ${list.length} posts`];
+    if (related.length) head.push(`Related: ${related.map((t) => `#${t.tag}(${t.count})`).join(" ")}`);
+    if (open.length) head.push(`Open questions: ${open.map((p) => p.id).join(", ")}`);
+    return text([...head, "", ...list.map((p) => renderPost(p, timeZone))].join("\n"));
   },
 );
 
@@ -173,16 +148,28 @@ server.registerTool(
   "worklog_search",
   {
     title: "Search the work log",
-    description: "Case-insensitive text search across PROJECT.md, TIMELINE.md and all session logs. Use it to find when and why something was done.",
-    inputSchema: {
-      query: z.string().min(1),
-      limit: z.number().int().min(1).max(200).default(30),
-    },
+    description: "Case-insensitive search over post text, reasons, tags, files and commands.",
+    inputSchema: { query: z.string().min(1), limit: z.number().int().min(1).max(200).default(30) },
     annotations: { readOnlyHint: true },
   },
   async ({ query, limit }) => {
-    const hits = await (await getStore()).search(query, limit);
-    return text(hits.length ? hits.join("\n") : `No matches for "${query}".`);
+    const hits = search((await (await getLog()).readAll()).posts, query).slice(-limit);
+    return text(hits.length ? hits.map((p) => renderPost(p, timeZone)).join("\n") : `No matches for "${query}".`);
+  },
+);
+
+server.registerTool(
+  "worklog_view",
+  {
+    title: "Build the log viewer",
+    description:
+      "Regenerate the HTML viewer (feed, tag lookup, open questions, sessions). Returns `page` to open in a browser and `artifact`, a body-only copy suited to publishing as a claude.ai Artifact when working in the cloud.",
+    inputSchema: {},
+  },
+  async () => {
+    const l = await getLog();
+    const files = await writeViewer(l);
+    return text(`page: ${files.page}\nartifact: ${files.artifact}`);
   },
 );
 

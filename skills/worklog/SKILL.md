@@ -1,77 +1,70 @@
 ---
 name: worklog
-description: Keep a human-readable work log of what Claude does in this project (.worklog/) and pick up project history from previous sessions. Use at the start of any non-trivial task (implementation, refactor, investigation, bug fix), especially in auto mode or long autonomous runs, and when wrapping up a task. 作業ログ・作業記録・引き継ぎ・セッションをまたいだ文脈の保持に使う。
+description: Record what Claude does in this project, and why, in a tag-searchable work log (.worklog/), and pick up the project's history from earlier sessions. Use whenever doing non-trivial work (implementation, refactor, investigation, bug fix) — especially in auto mode or long unattended runs — and before changing something whose background you don't know. 作業ログ・経緯の記録・タグでの逆引き・セッションをまたいだ引き継ぎ。
 ---
 
 # 作業ログ（worklog）
 
-このプロジェクトでは、Claude の作業内容を **人間が後から読んで流れを追える形** で `.worklog/` に残す。
-目的は2つ：
+このプロジェクトでは、Claude と作ってきたものについて **「いつ・なぜそうなったか」を、人間も Claude もタグから引ける状態** に保つ。
+仕様書は作らない。投稿を積み重ね、タグで逆引きできればよい。
 
-1. **人間向けの記録** — 自動モードで最後まで走らせたときでも「何を・なぜ・どうやったか」「人間が確認すべきこと」が分かるようにする
-2. **Claude 自身の引き継ぎ** — セッションが変わってもプロジェクト全体の流れ・決定事項・残タスクを把握できるようにする
+## 分担
 
-ログは `worklog` MCP サーバーのツール経由で書く（ファイルを直接編集しない）。
-
-## 流れ
-
-### 1. 作業を始める前
-
-1. `worklog_get_context` を呼び、`PROJECT.md` と直近セッションの「まとめ / 次にやること / 要確認」を読む
-   - 前回の「次にやること」や「要確認」が今回の依頼に関係するなら、それを踏まえて進める
-2. `worklog_start_session` でセッションを開始する
-   - `title`: 作業の短い名前（ユーザーの言語で）
-   - `goal`: 依頼内容と目的を、その場にいなかった人にも伝わる形で
-
-ちょっとした質問への回答や1〜2行の修正など、記録する価値のない軽い作業ではセッションを作らなくてよい。
-
-### 2. 作業中
-
-区切りごとに `worklog_log` で記録する。**コマンド1回ごとではなく、意味のある節目ごと**に書く。目安として1セッション数件〜十数件。
-
-| kind | いつ使うか |
+| 誰が | 何を |
 |---|---|
-| `task` | まとまった作業をした（何を・どう変えたか） |
-| `decision` | 方針を選んだ。**`reason` に理由と検討した代替案を必ず書く** |
-| `issue` | 問題・失敗・想定外に遭遇した（原因と対処も） |
-| `result` | 完了・検証できた成果（テスト通過、機能完成など） |
-| `question` | 人間に確認・判断してほしいこと。終了時に「人間の確認が必要な事項」へ自動で集約される |
-| `note` | その他、後で役立つメモ |
+| hook（自動） | 人間の指示文、変更したファイル、主なコマンド、テストの成否 |
+| **あなた（Claude）** | **意味の部分**：決定とその理由、問題、成果、人間への確認事項、まとめ |
 
-書き方のポイント：
+自動記録と同じこと（「page.tsx を編集した」など）を書き直さない。**なぜ・何が決まったか・何が分かったか** を書く。
 
-- `summary` は一行の見出し、`details` に Markdown で本文。関係ファイルは `files` に
-- その場にいなかったチームメイトが読んで分かるように書く（内部の試行錯誤の羅列ではなく、要点と理由）
-- **自動モードでは**、人間に聞けずに仮の判断で進めた箇所を必ず `decision`（理由つき）や `question` として残す。後で人間がレビューする起点になる
-- 秘密情報（APIキー、パスワード、個人情報など）はログに書かない
+## 始めるとき
 
-### 3. 作業を終えるとき
+- セッション開始時に、前回のまとめと未解決の確認事項が渡される。関係があれば踏まえて進める
+- 詳しく知りたいときは `worklog_context` を呼ぶ
+- **既存の機能に手を入れる前は** `worklog_tag` でその話題の経緯を確認する（過去の決定を知らずに覆さないため）
 
-1. `worklog_end_session` を呼ぶ
-   - `summary`: 何を達成したか、何が変わったか、今どういう状態か
-   - `status`: `completed`（目的達成） / `partial`（一部残り） / `blocked`（助けが必要）
-   - `next_steps`: 次のセッションや人間がやるべき具体的な作業
-   - `needs_review`: `question` 以外に人間に見てほしい点
-2. プロジェクト全体に関わる変化があれば `worklog_update_project` で `PROJECT.md` を更新する
-   - `status`（現在の状況）: 最新の状態に **replace**
-   - `decisions`（設計・重要な決定）: `- YYYY-MM-DD: 決定内容（理由）` の形で **append**
-   - `todos`（未完了タスク・課題）: 現在の一覧に **replace**（終わったものは消す）
-   - `overview`（概要）: プロジェクトの目的や構成が分かったら記入・更新
+## 作業中：`worklog_post`
 
-ユーザーへの最終報告の前に終了処理を済ませること。途中で中断する場合も、可能なら `partial` や `blocked` で閉じておく。
+意味のある節目ごとに投稿する。コマンド1回ごとではない。目安は1タスク数件。
 
-## 過去の経緯を調べたいとき
+| kind | いつ |
+|---|---|
+| `decision` | 方針を選んだ。`reason` に理由と、検討した代替案を書く |
+| `question` | 人間に確認・判断してほしいこと。**自動モードで人間に聞けず仮の判断で進めたときは必ず書く** |
+| `result` | 完成・検証できたこと（テスト通過、動作確認など） |
+| `issue` | 問題・失敗・想定外（原因と対処も） |
+| `idea` | 人間の思いつきや要望で、残しておく価値があるもの |
+| `note` | その他、後で役立つこと |
+| `summary` | タスクの区切り。何をしたか・今の状態・`next_steps`。次のセッションに引き継がれる |
 
-`worklog_search` で「いつ・なぜその変更をしたか」を検索できる。
+書き方：
 
-## ファイル構成（参考）
+- その場にいなかった人が読んで分かるように、ユーザーの言語で書く
+- 関連する投稿があれば `reply_to` でつなぐ（例：思いつき → それを実装した決定）
+- 秘密情報（API キー、パスワード、個人情報）は書かない
 
-```
-.worklog/
-├── PROJECT.md        # プロジェクト全体の要約（セッションをまたいで引き継ぐ情報）
-├── TIMELINE.md       # セッション一覧（新しい順）
-└── sessions/
-    └── 2026-09-26_1030_ログイン画面の改修.md   # セッションごとの詳細ログ
-```
+### タグ
 
-`.worklog/` は git にコミットして共有する前提。
+- すべての投稿に、話題を表すタグを1〜3個付ける（機能・画面・仕組みの名前など。例：`支出入力`、`認証`、`CI`）
+- **既存のタグを優先して使う**。一覧は `worklog_context` とセッション開始時の案内に出る
+- 同じ意味の別表記に気づいたら（`login` と `ログイン` など）、勝手にそろえず `question` で人間に提案する
+
+## 確認事項に返事をもらったら：`worklog_answer`
+
+人間が質問に答えたら、`worklog_answer` で質問の ID に回答を記録する。それで何かが決まったら `decision` も投稿する。
+
+## 終えるとき
+
+タスクの区切りや、ユーザーへの最終報告の前に `summary` を投稿する（`next_steps` つき）。
+自動モードでは、作業したのに何も投稿していないと終了前に促される。
+
+## ログを見せるとき
+
+人間が「ログを見たい」と言ったら `worklog_view` を呼ぶ。
+
+- 手元の PC なら、返ってきた `page`（`.worklog/view/index.html`）をブラウザで開くよう案内する
+- クラウド（claude.ai/code など）で Artifact を公開できるなら、`artifact` のファイルを Artifact として公開してリンクを渡す
+
+## コミット
+
+`.worklog/sessions/*.jsonl` はコードと一緒にコミットする（クラウドではコンテナが消えるため）。`view/` と `.state/` は自動でコミット対象外になっている。

@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// SessionStart hook: prints a short hand-off note from .worklog/ so Claude starts with the project's history.
-import { buildHookContext } from "./context.ts";
-import { resolveLang } from "./labels.ts";
-import { WorklogStore } from "./store.ts";
+// Entry point for every worklog hook. The event comes from the hook input (or argv[2]).
+import { openWorklog, timeZone } from "./config.ts";
+import { type HookInput, handleHook } from "./hooks.ts";
 
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) return "";
@@ -12,16 +11,17 @@ async function readStdin(): Promise<string> {
 }
 
 try {
-  let cwd: string | undefined;
+  let input: HookInput = {};
   try {
-    cwd = JSON.parse(await readStdin()).cwd;
+    input = JSON.parse(await readStdin());
   } catch {
-    // No or malformed hook input; fall back to the environment.
+    // No or malformed hook input; run with what the environment gives us.
   }
-  const root = process.env.WORKLOG_ROOT || process.env.CLAUDE_PROJECT_DIR || cwd || process.cwd();
-  const store = new WorklogStore(root, { lang: resolveLang(process.env.WORKLOG_LANG) });
-  process.stdout.write(`${await buildHookContext(store)}\n`);
+  const event = input.hook_event_name ?? process.argv[2] ?? "";
+  const root = process.env.WORKLOG_ROOT || process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  const result = await handleHook(event, input, openWorklog(root), timeZone);
+  if (result.stdout) process.stdout.write(`${result.stdout}\n`);
 } catch (e) {
-  // Never block a session from starting because of the log.
+  // Never break the user's session because of the log.
   process.stderr.write(`[worklog] hook failed: ${e instanceof Error ? e.message : String(e)}\n`);
 }
