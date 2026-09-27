@@ -55,14 +55,12 @@ main{min-width:0}
 .head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:12px}
 .head h1{font-size:20px;margin:0;text-wrap:balance;line-height:1.3;overflow-wrap:anywhere}
 .head p{margin:2px 0 0;color:var(--muted);font-size:13px}
-.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
-.search{flex:1 1 200px;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-.chip{cursor:pointer;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 11px;font-size:12.5px;color:var(--muted)}
-.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.toggle{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted);cursor:pointer}
 
 .feed{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.compact{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;padding:5px 16px 5px 60px;border-top:1px solid var(--line);font-size:12.5px;color:var(--faint);cursor:pointer}
+.compact:hover{background:var(--surface-2);color:var(--muted)}
+.compact .c-files{font-size:11.5px;overflow-wrap:anywhere}
+.day+.compact{border-top:0}
 .day{padding:6px 16px;font-size:12px;color:var(--faint);background:var(--surface-2);border-top:1px solid var(--line);font-family:var(--mono)}
 .day:first-child{border-top:0}
 .post{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;padding:13px 16px;border-top:1px solid var(--line);cursor:pointer}
@@ -72,6 +70,14 @@ main{min-width:0}
 .post.reply{padding-left:40px}
 .post.focus{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--accent)}
 .post.auto .body{color:var(--muted)}
+/* Weight carries the page instead of filters: decisions and questions stand out, the rest steps back. */
+.post.primary{box-shadow:inset 3px 0 0 var(--claude)}
+.post.primary .body{font-weight:500;font-size:14.5px}
+.post.k-row-question{box-shadow:inset 3px 0 0 var(--warn);background:color-mix(in srgb,var(--warn-soft) 55%,var(--surface))}
+.post.secondary{padding-block:9px;grid-template-columns:34px minmax(0,1fr)}
+.post.secondary .av{width:26px;height:26px;font-size:11px;justify-self:center}
+.post.secondary .body{font-size:13px;color:var(--muted)}
+.post.secondary .reason{font-size:12.5px}
 .av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px}
 .av.human{background:var(--human-soft);color:var(--human)}
 .av.claude{background:var(--claude-soft);color:var(--claude)}
@@ -86,6 +92,7 @@ main{min-width:0}
 .k-answer,.k-result{background:var(--ok-soft);color:var(--ok)}
 .k-issue{background:var(--danger-soft);color:var(--danger)}
 .k-note,.k-activity{background:var(--auto-soft);color:var(--auto)}
+.k-reply{background:var(--claude-soft);color:var(--claude)}
 .k-summary{background:var(--blue-soft);color:var(--blue)}
 .body{margin:3px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
 .clamp3{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
@@ -241,12 +248,7 @@ const SESSIONS = DATA.sessions.map(sessionInfo).filter(s => s.posts.length).sort
 
 // ---------------------------------------------------------------- state
 let view = {name: "feed"};
-let filter = "all", query = "", showAuto = true, expandAll = false;
 const openedFolds = new Set();
-try {
-  showAuto = localStorage.getItem("worklog.showAuto") !== "0";
-  expandAll = localStorage.getItem("worklog.expandAll") === "1";
-} catch {}
 
 const tagBtn = t => `<button class="tag" data-tag="${esc(t)}">#${esc(t)}</button>`;
 
@@ -265,7 +267,8 @@ function postHtml(p, opts = {}) {
   if (p.re && !opts.inThread) flags.push(`<span class="stat">↳ ${esc(p.re)} への返信</span>`);
   if (replies && !opts.inThread) flags.push(`<span class="stat">返信 ${replies}</span>`);
   const foot = [...(p.tags || []).map(tagBtn), ...flags];
-  return `<article class="post ${esc(p.author)}${opts.reply ? " reply" : ""}${opts.focus ? " focus" : ""}" data-post="${esc(p.id)}" tabindex="0">
+  const weight = ["decision", "question"].includes(p.kind) ? " primary" : ["issue", "result", "note", "answer", "idea"].includes(p.kind) ? " secondary" : "";
+  return `<article class="post ${esc(p.author)} k-row-${esc(p.kind)}${weight}${opts.reply ? " reply" : ""}${opts.focus ? " focus" : ""}" data-post="${esc(p.id)}" tabindex="0">
     <div class="av ${esc(p.author)}" aria-hidden="true">${a.av}</div>
     <div>
       <div class="meta"><span class="name">${a.name}</span><span class="kind k-${esc(p.kind)}">${KINDS[p.kind] || esc(p.kind)}</span><span class="mono">${opts.withDate ? short(p.ts) : time(p.ts)}</span><span class="id">${esc(p.id)}</span></div>
@@ -276,6 +279,14 @@ function postHtml(p, opts = {}) {
   </article>`;
 }
 
+/** Automatic records stay one quiet line so the meaningful posts carry the page. */
+function compactHtml(p) {
+  const runs = p.tests || [];
+  const strip = runs.length ? ` <span class="strip mono">${runs.map(t => `<span class="${t.ok ? "test-ok" : "test-ng"}">${t.ok ? "✓" : "✗"}</span>`).join("")}</span>` : "";
+  const files = (p.files || []).slice(0, 3).join(", ") + ((p.files || []).length > 3 ? ` ほか${p.files.length - 3}件` : "");
+  return `<div class="compact" data-post="${esc(p.id)}" tabindex="0"><span class="mono">${time(p.ts)}</span><span>${esc(p.text)}${strip}</span>${files ? `<span class="c-files mono">${esc(files)}</span>` : ""}</div>`;
+}
+
 function listWithDays(posts, opts = {}) {
   if (!posts.length) return `<p class="empty">該当する投稿はありません。</p>`;
   let current = "";
@@ -283,34 +294,13 @@ function listWithDays(posts, opts = {}) {
     const d = day(p.ts);
     const sep = d !== current ? `<div class="day">${d}</div>` : "";
     current = d;
-    return sep + postHtml(p, opts);
+    return sep + (p.author === "auto" ? compactHtml(p) : postHtml(p, opts));
   }).join("");
 }
 
-function matches(p) {
-  if (!showAuto && p.author === "auto") return false;
-  if (filter === "open" && !(p.kind === "question" && !answered.has(p.id))) return false;
-  if (["human","claude","auto"].includes(filter) && p.author !== filter) return false;
-  if (["decision","question","result","issue","summary"].includes(filter) && p.kind !== filter) return false;
-  if (query) {
-    const q = query.toLowerCase();
-    const hay = [p.text, p.reason, ...(p.tags || []), ...(p.files || []), ...(p.next || []), ...(p.commands || []), p.id].join("\n").toLowerCase();
-    if (!hay.includes(q)) return false;
-  }
-  return true;
-}
-
-const FILTERS = [["all","すべて"],["human","あなた"],["claude","Claude"],["auto","自動記録"],["decision","決定"],["issue","問題"],["summary","まとめ"],["open","未解決"]];
-function autoToggle() {
-  return `<label class="toggle"><input type="checkbox" id="showAuto" ${showAuto ? "checked" : ""}> 自動記録を表示</label>`;
-}
-
 function renderFeed() {
-  const list = [...POSTS].reverse().filter(matches);
-  return `<div class="head"><div><h1>フィード</h1><p>指示・決定・変更を新しい順に表示します。</p></div></div>
-  <div class="tools"><input class="search" id="q" type="search" placeholder="投稿・タグ・ファイル名で検索" value="${esc(query)}" aria-label="検索">${autoToggle()}</div>
-  <div class="chips" role="group" aria-label="絞り込み">${FILTERS.map(([v, l]) => `<button class="chip" data-filter="${v}" aria-pressed="${filter === v}">${l}</button>`).join("")}</div>
-  <div class="feed" id="feedList">${listWithDays(list)}</div>`;
+  return `<div class="head"><div><h1>フィード</h1><p>すべての記録を新しい順に表示します。決定と要確認は目立たせ、自動記録は1行に抑えています。</p></div></div>
+  <div class="feed">${listWithDays([...POSTS].reverse())}</div>`;
 }
 
 function renderTags() {
@@ -427,11 +417,11 @@ function renderSession(id) {
     // Decisions and questions become bubbles; the work between them folds into one line.
     let pending = [], seg = 0;
     const flush = () => {
-      const items = pending.filter(p => showAuto || p.author !== "auto");
+      const items = pending;
       pending = [];
       if (!items.length) return;
       const key = `${s.session}:${i}:${seg++}`;
-      const open = expandAll || openedFolds.has(key);
+      const open = openedFolds.has(key);
       parts.push(`<button class="fold${open ? " open" : ""}" data-fold="${esc(key)}" aria-expanded="${open}">${open ? "▾" : "▸"} ${foldLabel(items)}</button>`);
       if (open) parts.push(`<div class="mono-log">${items.map(thoughtHtml).join("")}</div>`);
     };
@@ -444,7 +434,6 @@ function renderSession(id) {
     return `<section class="turn">${parts.join("")}</section>`;
   }).join("");
   return `<div class="head"><div><h1>${esc(s.title)}</h1><p class="mono">${short(s.started)}${s.branch ? " ・ " + esc(s.branch) : ""}</p></div><button class="btn" data-view="sessions">一覧へ</button></div>
-  <div class="tools"><label class="toggle"><input type="checkbox" id="expandAll" ${expandAll ? "checked" : ""}> 経過をすべて開く</label>${autoToggle()}</div>
   <div class="chat">${html || `<p class="empty">まだ記録がありません。</p>`}</div>`;
 }
 
@@ -490,14 +479,13 @@ function go(next) {
 
 document.addEventListener("click", e => {
   if (e.target.closest("details")) return;
-  const el = e.target.closest("[data-tag],[data-filter],[data-view],[data-post],[data-session],[data-back],[data-fold]");
+  const el = e.target.closest("[data-tag],[data-view],[data-post],[data-session],[data-back],[data-fold]");
   if (!el) return;
   if (el.dataset.fold) {
     openedFolds.has(el.dataset.fold) ? openedFolds.delete(el.dataset.fold) : openedFolds.add(el.dataset.fold);
     return render();
   }
   if (el.dataset.tag) return go({name: "tag", tag: el.dataset.tag});
-  if (el.dataset.filter) { filter = el.dataset.filter; return render(); }
   if (el.dataset.view) return go({name: el.dataset.view});
   if (el.dataset.back) { view = backStack.pop() || {name: "feed"}; return render(); }
   if (el.dataset.session) return go({name: "session", id: el.dataset.session});
@@ -506,26 +494,6 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches("[tabindex='0']")) { e.preventDefault(); e.target.click(); }
 });
-document.addEventListener("input", e => {
-  if (e.target.id === "q") {
-    query = e.target.value;
-    document.getElementById("feedList").innerHTML = listWithDays([...POSTS].reverse().filter(matches));
-  }
-});
-document.addEventListener("change", e => {
-  if (e.target.id === "expandAll") {
-    expandAll = e.target.checked;
-    openedFolds.clear();
-    try { localStorage.setItem("worklog.expandAll", expandAll ? "1" : "0"); } catch {}
-    return render();
-  }
-  if (e.target.id === "showAuto") {
-    showAuto = e.target.checked;
-    try { localStorage.setItem("worklog.showAuto", showAuto ? "1" : "0"); } catch {}
-    render();
-  }
-});
-
 renderAside();
 render();
 </script>
