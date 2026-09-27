@@ -154,9 +154,16 @@ main{min-width:0}
 .strip{letter-spacing:1px;margin-left:4px}
 .msg.mini{max-width:min(520px,88%);cursor:pointer}
 .msg.mini .bubble{padding:8px 12px;border-color:var(--claude-soft);background:var(--surface)}
-.msg.mini.q .bubble{border-color:var(--warn);background:var(--warn-soft)}
-.msg.mini .b-head{display:flex;gap:8px;align-items:center;margin-bottom:2px}
-.msg.mini .b-reason{margin:4px 0 0;font-size:12.5px;color:var(--muted);white-space:pre-wrap}
+.msg.mini .bubble{position:relative}
+.msg.mini.d .bubble{border-color:var(--claude)}
+.msg.mini.q .bubble{border-color:var(--warn)}
+.msg.mini.q.open .bubble{background:var(--warn-soft)}
+.msg.mini.q.open .bubble::after{content:"";position:absolute;top:-4px;right:-4px;width:10px;height:10px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 2px var(--bg)}
+.mark{display:inline-block;vertical-align:1px;margin-right:7px}
+.mark.d{width:8px;height:8px;background:var(--claude);transform:rotate(45deg)}
+.mark.q{width:16px;height:16px;border-radius:50%;background:var(--warn);color:var(--surface);font-size:11px;font-weight:700;line-height:16px;text-align:center;vertical-align:1px}
+.msg.mini.q:not(.open) .mark.q{background:var(--faint)}
+.msg.mini .b-reason{margin:4px 0 0;font-size:12.5px;color:var(--muted);white-space:pre-wrap;padding-left:15px}
 .msg.mini .b-tags{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:4px}
 .t-time{font-size:11px;color:var(--faint);margin-right:6px}
 .fold:hover{color:var(--accent)}
@@ -392,13 +399,19 @@ function foldLabel(items) {
   return bits.join("・") + strip;
 }
 
+/**
+ * Decisions and questions are told apart by the bubble itself, not by a label row:
+ * a decision leads with a teal diamond; a question is amber with a "?" mark, and while
+ * it is unanswered the bubble is filled and carries a dot.
+ */
 function claudeBubble(p) {
   const isQ = p.kind === "question";
-  const flag = isQ ? (answered.has(p.id) ? `<span class="flag-done">回答済み</span>` : `<span class="flag-open">未解決</span>`) : "";
-  return `<div class="msg claude mini${isQ ? " q" : ""}" data-post="${esc(p.id)}" tabindex="0"><div class="av claude" aria-hidden="true">C</div>
-    <div class="bubble"><div class="b-head"><span class="kind k-${esc(p.kind)}">${KINDS[p.kind]}</span>${flag}</div>
-      <p class="main">${esc(p.text)}</p>
-      ${p.reason ? `<p class="b-reason">理由: ${esc(p.reason)}</p>` : ""}
+  const open = isQ && !answered.has(p.id);
+  const label = isQ ? (open ? "要確認（未回答）" : "要確認（回答済み）") : "決定";
+  const mark = isQ ? `<span class="mark q" aria-hidden="true">?</span>` : `<span class="mark d" aria-hidden="true"></span>`;
+  return `<div class="msg claude mini ${isQ ? "q" : "d"}${open ? " open" : ""}" data-post="${esc(p.id)}" tabindex="0" title="${label}" aria-label="${label}"><div class="av claude" aria-hidden="true">C</div>
+    <div class="bubble"><p class="main">${mark}${esc(p.text)}</p>
+      ${p.reason ? `<p class="b-reason">${esc(p.reason)}</p>` : ""}
       ${p.tags?.length ? `<div class="b-tags">${p.tags.map(tagBtn).join("")}</div>` : ""}
     </div><time>${time(p.ts)}</time></div>`;
 }
