@@ -29,7 +29,7 @@ description: Record what Claude does in this project, and why, in a tag-searchab
 
 | kind | いつ |
 |---|---|
-| `decision` | 方針を選んだ。`reason` に理由と、検討した代替案を書く |
+| `decision` | 方針を選んだ。`reason` に理由と、検討した代替案を書く。**ビューアではチャットの吹き出しとして目立つ位置に出る**ので、人間に伝えたい決定は必ずこれで残す |
 | `question` | 人間に確認・判断してほしいこと。**自動モードで人間に聞けず仮の判断で進めたときは必ず書く** |
 | `result` | 完成・検証できたこと（テスト通過、動作確認など） |
 | `issue` | 問題・失敗・想定外（原因と対処も） |
@@ -41,6 +41,7 @@ description: Record what Claude does in this project, and why, in a tag-searchab
 
 - その場にいなかった人が読んで分かるように、ユーザーの言語で書く
 - 関連する投稿があれば `reply_to` でつなぐ（例：思いつき → それを実装した決定）
+- `issue` を解決したら、その issue に `reply_to` して `result`（どう解決したか）を投稿する。ビューアで「解決済み」と表示される
 - 秘密情報（API キー、パスワード、個人情報）は書かない
 
 ### タグ

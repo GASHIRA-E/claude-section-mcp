@@ -142,7 +142,16 @@ main{min-width:0}
 .thought .t-sub{display:block;font-size:12px;color:var(--faint)}
 .thought.q .t-text{color:var(--warn);font-weight:500}
 .thought.auto .t-text{font-family:var(--mono);font-size:12px}
-.fold{all:unset;cursor:pointer;margin-left:38px;font-size:12.5px;color:var(--faint);border:1px dashed var(--line);border-radius:999px;padding:1px 10px;align-self:flex-start}
+.fold{all:unset;cursor:pointer;margin-left:38px;font-size:12.5px;color:var(--faint);border:1px dashed var(--line);border-radius:999px;padding:1px 10px;align-self:flex-start;max-width:calc(100% - 38px);overflow-wrap:anywhere}
+.fold.open{border-style:solid;color:var(--muted)}
+.strip{letter-spacing:1px;margin-left:4px}
+.msg.mini{max-width:min(520px,88%);cursor:pointer}
+.msg.mini .bubble{padding:8px 12px;border-color:var(--claude-soft);background:var(--surface)}
+.msg.mini.q .bubble{border-color:var(--warn);background:var(--warn-soft)}
+.msg.mini .b-head{display:flex;gap:8px;align-items:center;margin-bottom:2px}
+.msg.mini .b-reason{margin:4px 0 0;font-size:12.5px;color:var(--muted);white-space:pre-wrap}
+.msg.mini .b-tags{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:4px}
+.t-time{font-size:11px;color:var(--faint);margin-right:6px}
 .fold:hover{color:var(--accent)}
 .fold:focus-visible{outline:2px solid var(--accent)}
 
@@ -195,6 +204,11 @@ const AUTHORS = {human:{name:"あなた",av:"人"},claude:{name:"Claude",av:"C"}
 const KINDS = {prompt:"指示",reply:"返答",idea:"思いつき",decision:"決定",question:"要確認",answer:"回答",issue:"問題",result:"成果",note:"メモ",summary:"まとめ",activity:"変更"};
 const answered = new Set(POSTS.filter(p => p.kind === "answer" && p.re).map(p => p.re));
 const openQs = POSTS.filter(p => p.kind === "question" && !answered.has(p.id));
+/** An issue counts as resolved when Claude replied to it, or when a later test run in the same session passed. */
+const resolvedIssues = new Set(POSTS.filter(p => p.kind === "issue" && (
+  POSTS.some(q => q.re === p.id && q.author === "claude") ||
+  POSTS.some(q => q.session === p.session && q.ts > p.ts && q.tests?.length && q.tests.every(t => t.ok))
+)).map(p => p.id));
 const repliesOf = id => POSTS.filter(p => p.re === id);
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -227,11 +241,11 @@ const SESSIONS = DATA.sessions.map(sessionInfo).filter(s => s.posts.length).sort
 
 // ---------------------------------------------------------------- state
 let view = {name: "feed"};
-let filter = "all", query = "", showAuto = true, showThoughts = true;
-const openedTurns = new Set();
+let filter = "all", query = "", showAuto = true, expandAll = false;
+const openedFolds = new Set();
 try {
   showAuto = localStorage.getItem("worklog.showAuto") !== "0";
-  showThoughts = localStorage.getItem("worklog.showThoughts") !== "0";
+  expandAll = localStorage.getItem("worklog.expandAll") === "1";
 } catch {}
 
 const tagBtn = t => `<button class="tag" data-tag="${esc(t)}">#${esc(t)}</button>`;
@@ -342,11 +356,11 @@ function turnsOf(posts) {
   return turns;
 }
 
-function bubbleBody(p) {
+function bubbleBody(p, full = false) {
   if (p.summary) {
     return `<p class="main">${esc(p.summary)}</p><details><summary>原文を表示</summary><p>${esc(p.text)}</p></details>`;
   }
-  const long = p.text.length > 280 || p.text.split("\n").length > 6;
+  const long = !full && (p.text.length > 280 || p.text.split("\n").length > 6);
   return long
     ? `<p class="main clamp">${esc(p.text)}</p><details><summary>全文を表示</summary><p>${esc(p.text)}</p></details>`
     : `<p class="main">${esc(p.text)}</p>`;
@@ -365,32 +379,72 @@ function thoughtHtml(p) {
   const tags = (p.tags || []).map(t => "#" + t).join(" ");
   return `<div class="thought${isQ ? " q" : ""}${p.author === "auto" ? " auto" : ""}" data-post="${esc(p.id)}" tabindex="0">
     <span class="t-kind k-${esc(p.kind)}">${KINDS[p.kind] || esc(p.kind)}</span>
-    <span class="t-text">${esc(text.split("\n")[0])}${sub ? `<span class="t-sub">${esc(sub)}</span>` : ""}${tags ? `<span class="t-sub mono">${esc(tags)}</span>` : ""}</span>
+    <span class="t-text"><span class="t-time mono">${time(p.ts)}</span>${esc(text.split("\n")[0])}${p.kind === "issue" ? (resolvedIssues.has(p.id) ? ` <span class="flag-done">解決</span>` : ` <span class="flag-open">未解決</span>`) : ""}${sub ? `<span class="t-sub">${esc(sub)}</span>` : ""}${tags ? `<span class="t-sub mono">${esc(tags)}</span>` : ""}</span>
   </div>`;
+}
+
+/** Kinds promoted to Claude's own bubbles in the chat; everything else folds between them. */
+const BUBBLE_KINDS = new Set(["decision", "question"]);
+
+function foldLabel(items) {
+  const count = k => items.filter(p => p.kind === k).length;
+  const bits = [];
+  const issues = items.filter(p => p.kind === "issue");
+  if (issues.length) {
+    const open = issues.filter(p => !resolvedIssues.has(p.id)).length;
+    bits.push(`問題${issues.length}件${open ? `（未解決${open}）` : "（解決済み）"}`);
+  }
+  for (const [k, l] of [["result", "成果"], ["answer", "回答"], ["idea", "思いつき"], ["note", "メモ"], ["summary", "まとめ"], ["activity", "変更"]]) {
+    if (count(k)) bits.push(`${l}${count(k)}件`);
+  }
+  const runs = items.flatMap(p => p.tests || []);
+  const strip = runs.length ? ` <span class="strip mono">${runs.map(t => `<span class="${t.ok ? "test-ok" : "test-ng"}">${t.ok ? "✓" : "✗"}</span>`).join("")}</span>` : "";
+  return bits.join("・") + strip;
+}
+
+function claudeBubble(p) {
+  const isQ = p.kind === "question";
+  const flag = isQ ? (answered.has(p.id) ? `<span class="flag-done">回答済み</span>` : `<span class="flag-open">未解決</span>`) : "";
+  return `<div class="msg claude mini${isQ ? " q" : ""}" data-post="${esc(p.id)}" tabindex="0"><div class="av claude" aria-hidden="true">C</div>
+    <div class="bubble"><div class="b-head"><span class="kind k-${esc(p.kind)}">${KINDS[p.kind]}</span>${flag}</div>
+      <p class="main">${esc(p.text)}</p>
+      ${p.reason ? `<p class="b-reason">理由: ${esc(p.reason)}</p>` : ""}
+      ${p.tags?.length ? `<div class="b-tags">${p.tags.map(tagBtn).join("")}</div>` : ""}
+    </div><time>${time(p.ts)}</time></div>`;
 }
 
 function renderSession(id) {
   const s = SESSIONS.find(x => x.session === id);
   if (!s) return renderSessions();
-  const turns = turnsOf(s.posts);
-  const html = turns.map((t, i) => {
-    const key = s.session + ":" + i;
-    const work = t.work.filter(p => showAuto || p.author !== "auto");
-    const open = showThoughts || openedTurns.has(key);
+  const html = turnsOf(s.posts).map((t, i) => {
     const firstTs = (t.prompt || t.work[0] || t.replies[0])?.ts;
+    const lastTs = (t.replies.at(-1) || t.work.at(-1) || t.prompt)?.ts;
+    const mins = firstTs && lastTs ? Math.round((new Date(lastTs) - new Date(firstTs)) / 60000) : 0;
     const parts = [];
-    if (firstTs) parts.push(`<span class="turn-time">${short(firstTs)}</span>`);
+    if (firstTs) parts.push(`<span class="turn-time">${short(firstTs)}${mins >= 5 ? ` ・ ${mins}分` : ""}</span>`);
     if (t.prompt) parts.push(`<div class="msg user"><div class="bubble">${bubbleBody(t.prompt)}</div><time>${time(t.prompt.ts)}</time></div>`);
-    if (work.length) {
-      parts.push(open
-        ? `<div class="mono-log" aria-label="作業の記録">${work.map(thoughtHtml).join("")}</div>`
-        : `<button class="fold" data-turn="${esc(key)}">作業の記録 ${work.length}件を表示${work.some(p => p.kind === "question" && !answered.has(p.id)) ? "（未解決の確認あり）" : ""}</button>`);
+
+    // Decisions and questions become bubbles; the work between them folds into one line.
+    let pending = [], seg = 0;
+    const flush = () => {
+      const items = pending.filter(p => showAuto || p.author !== "auto");
+      pending = [];
+      if (!items.length) return;
+      const key = `${s.session}:${i}:${seg++}`;
+      const open = expandAll || openedFolds.has(key);
+      parts.push(`<button class="fold${open ? " open" : ""}" data-fold="${esc(key)}" aria-expanded="${open}">${open ? "▾" : "▸"} ${foldLabel(items)}</button>`);
+      if (open) parts.push(`<div class="mono-log">${items.map(thoughtHtml).join("")}</div>`);
+    };
+    for (const p of t.work) {
+      if (BUBBLE_KINDS.has(p.kind)) { flush(); parts.push(claudeBubble(p)); }
+      else pending.push(p);
     }
-    for (const r of t.replies) parts.push(`<div class="msg claude"><div class="av claude" aria-hidden="true">C</div><div class="bubble">${bubbleBody(r)}</div><time>${time(r.ts)}</time></div>`);
+    flush();
+    for (const r of t.replies) parts.push(`<div class="msg claude"><div class="av claude" aria-hidden="true">C</div><div class="bubble">${bubbleBody(r, t.work.length >= 10)}</div><time>${time(r.ts)}</time></div>`);
     return `<section class="turn">${parts.join("")}</section>`;
   }).join("");
   return `<div class="head"><div><h1>${esc(s.title)}</h1><p class="mono">${short(s.started)}${s.branch ? " ・ " + esc(s.branch) : ""}</p></div><button class="btn" data-view="sessions">一覧へ</button></div>
-  <div class="tools"><label class="toggle"><input type="checkbox" id="showThoughts" ${showThoughts ? "checked" : ""}> 作業の記録を表示</label>${autoToggle()}</div>
+  <div class="tools"><label class="toggle"><input type="checkbox" id="expandAll" ${expandAll ? "checked" : ""}> 経過をすべて開く</label>${autoToggle()}</div>
   <div class="chat">${html || `<p class="empty">まだ記録がありません。</p>`}</div>`;
 }
 
@@ -436,9 +490,12 @@ function go(next) {
 
 document.addEventListener("click", e => {
   if (e.target.closest("details")) return;
-  const el = e.target.closest("[data-tag],[data-filter],[data-view],[data-post],[data-session],[data-back],[data-turn]");
+  const el = e.target.closest("[data-tag],[data-filter],[data-view],[data-post],[data-session],[data-back],[data-fold]");
   if (!el) return;
-  if (el.dataset.turn) { openedTurns.add(el.dataset.turn); return render(); }
+  if (el.dataset.fold) {
+    openedFolds.has(el.dataset.fold) ? openedFolds.delete(el.dataset.fold) : openedFolds.add(el.dataset.fold);
+    return render();
+  }
   if (el.dataset.tag) return go({name: "tag", tag: el.dataset.tag});
   if (el.dataset.filter) { filter = el.dataset.filter; return render(); }
   if (el.dataset.view) return go({name: el.dataset.view});
@@ -456,10 +513,10 @@ document.addEventListener("input", e => {
   }
 });
 document.addEventListener("change", e => {
-  if (e.target.id === "showThoughts") {
-    showThoughts = e.target.checked;
-    openedTurns.clear();
-    try { localStorage.setItem("worklog.showThoughts", showThoughts ? "1" : "0"); } catch {}
+  if (e.target.id === "expandAll") {
+    expandAll = e.target.checked;
+    openedFolds.clear();
+    try { localStorage.setItem("worklog.expandAll", expandAll ? "1" : "0"); } catch {}
     return render();
   }
   if (e.target.id === "showAuto") {
