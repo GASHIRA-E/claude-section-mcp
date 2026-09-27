@@ -88,6 +88,7 @@ main{min-width:0}
 .k-note,.k-activity{background:var(--auto-soft);color:var(--auto)}
 .k-summary{background:var(--blue-soft);color:var(--blue)}
 .body{margin:3px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
+.clamp3{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .reason{margin:6px 0 0;font-size:13px;color:var(--muted);padding-left:10px;border-left:2px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere}
 .list{margin:6px 0 0;padding-left:1.2em;font-size:13px}
 .files{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
@@ -115,6 +116,35 @@ main{min-width:0}
 .facts{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:var(--muted);margin:-4px 0 12px}
 .related{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;margin-bottom:14px;font-size:12.5px;color:var(--faint)}
 .btn{cursor:pointer;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 12px;font-size:12.5px}
+
+/* ---------- chat (session view) ---------- */
+.chat{display:flex;flex-direction:column;gap:22px}
+.turn{display:flex;flex-direction:column;gap:10px}
+.turn-time{align-self:center;font-family:var(--mono);font-size:11.5px;color:var(--faint);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:0 10px}
+.msg{display:flex;gap:10px;align-items:flex-end;max-width:min(560px,92%)}
+.msg.user{align-self:flex-end;flex-direction:row-reverse}
+.bubble{padding:10px 14px;border-radius:16px;overflow-wrap:anywhere;min-width:0}
+.msg.user .bubble{background:var(--human-soft);border-bottom-right-radius:4px}
+.msg.claude .bubble{background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px}
+.bubble .main{margin:0;white-space:pre-wrap}
+.bubble .clamp{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+.bubble details{margin-top:6px;font-size:12.5px;color:var(--muted)}
+.bubble summary{cursor:pointer;color:var(--accent);list-style:none}
+.bubble summary::-webkit-details-marker{display:none}
+.bubble details p{white-space:pre-wrap;margin:6px 0 0}
+.msg time{font-family:var(--mono);font-size:11px;color:var(--faint);white-space:nowrap;padding-bottom:2px}
+.msg .av{flex:none;width:28px;height:28px;font-size:12px}
+.mono-log{margin-left:38px;border-left:2px dotted var(--line);padding:2px 0 2px 12px;display:flex;flex-direction:column;gap:5px;max-width:620px}
+.thought{font-size:13px;color:var(--muted);cursor:pointer;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:baseline}
+.thought:hover .t-text{color:var(--ink)}
+.thought .t-kind{font-size:11px;font-weight:500;border-radius:4px;padding:0 5px;line-height:18px;white-space:nowrap}
+.thought .t-text{overflow-wrap:anywhere}
+.thought .t-sub{display:block;font-size:12px;color:var(--faint)}
+.thought.q .t-text{color:var(--warn);font-weight:500}
+.thought.auto .t-text{font-family:var(--mono);font-size:12px}
+.fold{all:unset;cursor:pointer;margin-left:38px;font-size:12.5px;color:var(--faint);border:1px dashed var(--line);border-radius:999px;padding:1px 10px;align-self:flex-start}
+.fold:hover{color:var(--accent)}
+.fold:focus-visible{outline:2px solid var(--accent)}
 
 aside{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:16px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
@@ -162,7 +192,7 @@ const DATA = /*__WORKLOG_DATA__*/null || {project:"sample",generated:new Date().
 const POSTS = DATA.posts;
 const byId = Object.fromEntries(POSTS.map(p => [p.id, p]));
 const AUTHORS = {human:{name:"あなた",av:"人"},claude:{name:"Claude",av:"C"},auto:{name:"自動記録",av:"自"}};
-const KINDS = {prompt:"指示",idea:"思いつき",decision:"決定",question:"要確認",answer:"回答",issue:"問題",result:"成果",note:"メモ",summary:"まとめ",activity:"変更"};
+const KINDS = {prompt:"指示",reply:"返答",idea:"思いつき",decision:"決定",question:"要確認",answer:"回答",issue:"問題",result:"成果",note:"メモ",summary:"まとめ",activity:"変更"};
 const answered = new Set(POSTS.filter(p => p.kind === "answer" && p.re).map(p => p.re));
 const openQs = POSTS.filter(p => p.kind === "question" && !answered.has(p.id));
 const repliesOf = id => POSTS.filter(p => p.re === id);
@@ -190,15 +220,19 @@ function sessionInfo(meta) {
   const posts = POSTS.filter(p => p.session === meta.session);
   const prompt = posts.find(p => p.kind === "prompt");
   const summary = [...posts].reverse().find(p => p.kind === "summary");
-  const title = prompt ? prompt.text : summary ? summary.text : "（指示の記録なし）";
+  const title = prompt ? (prompt.summary || prompt.text) : summary ? summary.text : "（指示の記録なし）";
   return {...meta, posts, title: title.length > 60 ? title.slice(0, 59) + "…" : title, summary, last: posts.at(-1)?.ts || meta.started};
 }
 const SESSIONS = DATA.sessions.map(sessionInfo).filter(s => s.posts.length).sort((a, b) => b.last.localeCompare(a.last));
 
 // ---------------------------------------------------------------- state
 let view = {name: "feed"};
-let filter = "all", query = "", showAuto = true;
-try { showAuto = localStorage.getItem("worklog.showAuto") !== "0"; } catch {}
+let filter = "all", query = "", showAuto = true, showThoughts = true;
+const openedTurns = new Set();
+try {
+  showAuto = localStorage.getItem("worklog.showAuto") !== "0";
+  showThoughts = localStorage.getItem("worklog.showThoughts") !== "0";
+} catch {}
 
 const tagBtn = t => `<button class="tag" data-tag="${esc(t)}">#${esc(t)}</button>`;
 
@@ -221,7 +255,7 @@ function postHtml(p, opts = {}) {
     <div class="av ${esc(p.author)}" aria-hidden="true">${a.av}</div>
     <div>
       <div class="meta"><span class="name">${a.name}</span><span class="kind k-${esc(p.kind)}">${KINDS[p.kind] || esc(p.kind)}</span><span class="mono">${opts.withDate ? short(p.ts) : time(p.ts)}</span><span class="id">${esc(p.id)}</span></div>
-      ${p.text ? `<p class="body">${esc(p.text)}</p>` : ""}
+      ${p.text ? `<p class="body${p.kind === "prompt" || p.kind === "reply" ? " clamp3" : ""}">${esc(p.summary || p.text)}</p>` : ""}
       ${bits.join("")}
       ${foot.length ? `<div class="foot">${foot.join("")}</div>` : ""}
     </div>
@@ -295,13 +329,69 @@ function renderSessions() {
     <div class="r">${short(s.started)}<br>${s.posts.length}件</div></div>`).join("") || `<p class="empty">まだセッションがありません。</p>`}</div>`;
 }
 
+/** Split a session into turns: each prompt, the work that followed, and Claude's reply. */
+function turnsOf(posts) {
+  const turns = [];
+  let cur = null;
+  for (const p of posts) {
+    if (p.kind === "prompt" || !cur) { cur = {prompt: null, work: [], replies: []}; turns.push(cur); }
+    if (p.kind === "prompt") cur.prompt = p;
+    else if (p.kind === "reply") cur.replies.push(p);
+    else cur.work.push(p);
+  }
+  return turns;
+}
+
+function bubbleBody(p) {
+  if (p.summary) {
+    return `<p class="main">${esc(p.summary)}</p><details><summary>原文を表示</summary><p>${esc(p.text)}</p></details>`;
+  }
+  const long = p.text.length > 280 || p.text.split("\n").length > 6;
+  return long
+    ? `<p class="main clamp">${esc(p.text)}</p><details><summary>全文を表示</summary><p>${esc(p.text)}</p></details>`
+    : `<p class="main">${esc(p.text)}</p>`;
+}
+
+function thoughtHtml(p) {
+  const isQ = p.kind === "question" && !answered.has(p.id);
+  let text = p.text, sub = "";
+  if (p.kind === "activity") {
+    const bits = [];
+    if (p.files?.length) bits.push(p.files.slice(0, 3).join(", ") + (p.files.length > 3 ? ` ほか${p.files.length - 3}件` : ""));
+    if (p.tests?.some(t => !t.ok)) bits.push("失敗: " + p.tests.filter(t => !t.ok).map(t => t.command).join(", "));
+    sub = bits.join(" ・ ");
+  } else if (p.reason) sub = "理由: " + p.reason;
+  else if (p.next?.length) sub = "次: " + p.next.join(" / ");
+  const tags = (p.tags || []).map(t => "#" + t).join(" ");
+  return `<div class="thought${isQ ? " q" : ""}${p.author === "auto" ? " auto" : ""}" data-post="${esc(p.id)}" tabindex="0">
+    <span class="t-kind k-${esc(p.kind)}">${KINDS[p.kind] || esc(p.kind)}</span>
+    <span class="t-text">${esc(text.split("\n")[0])}${sub ? `<span class="t-sub">${esc(sub)}</span>` : ""}${tags ? `<span class="t-sub mono">${esc(tags)}</span>` : ""}</span>
+  </div>`;
+}
+
 function renderSession(id) {
   const s = SESSIONS.find(x => x.session === id);
   if (!s) return renderSessions();
-  const posts = s.posts.filter(p => showAuto || p.author !== "auto");
+  const turns = turnsOf(s.posts);
+  const html = turns.map((t, i) => {
+    const key = s.session + ":" + i;
+    const work = t.work.filter(p => showAuto || p.author !== "auto");
+    const open = showThoughts || openedTurns.has(key);
+    const firstTs = (t.prompt || t.work[0] || t.replies[0])?.ts;
+    const parts = [];
+    if (firstTs) parts.push(`<span class="turn-time">${short(firstTs)}</span>`);
+    if (t.prompt) parts.push(`<div class="msg user"><div class="bubble">${bubbleBody(t.prompt)}</div><time>${time(t.prompt.ts)}</time></div>`);
+    if (work.length) {
+      parts.push(open
+        ? `<div class="mono-log" aria-label="作業の記録">${work.map(thoughtHtml).join("")}</div>`
+        : `<button class="fold" data-turn="${esc(key)}">作業の記録 ${work.length}件を表示${work.some(p => p.kind === "question" && !answered.has(p.id)) ? "（未解決の確認あり）" : ""}</button>`);
+    }
+    for (const r of t.replies) parts.push(`<div class="msg claude"><div class="av claude" aria-hidden="true">C</div><div class="bubble">${bubbleBody(r)}</div><time>${time(r.ts)}</time></div>`);
+    return `<section class="turn">${parts.join("")}</section>`;
+  }).join("");
   return `<div class="head"><div><h1>${esc(s.title)}</h1><p class="mono">${short(s.started)}${s.branch ? " ・ " + esc(s.branch) : ""}</p></div><button class="btn" data-view="sessions">一覧へ</button></div>
-  <div class="tools">${autoToggle()}</div>
-  <div class="feed">${listWithDays(posts)}</div>`;
+  <div class="tools"><label class="toggle"><input type="checkbox" id="showThoughts" ${showThoughts ? "checked" : ""}> 作業の記録を表示</label>${autoToggle()}</div>
+  <div class="chat">${html || `<p class="empty">まだ記録がありません。</p>`}</div>`;
 }
 
 function renderThread(id) {
@@ -345,8 +435,10 @@ function go(next) {
 }
 
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-tag],[data-filter],[data-view],[data-post],[data-session],[data-back]");
+  if (e.target.closest("details")) return;
+  const el = e.target.closest("[data-tag],[data-filter],[data-view],[data-post],[data-session],[data-back],[data-turn]");
   if (!el) return;
+  if (el.dataset.turn) { openedTurns.add(el.dataset.turn); return render(); }
   if (el.dataset.tag) return go({name: "tag", tag: el.dataset.tag});
   if (el.dataset.filter) { filter = el.dataset.filter; return render(); }
   if (el.dataset.view) return go({name: el.dataset.view});
@@ -364,6 +456,12 @@ document.addEventListener("input", e => {
   }
 });
 document.addEventListener("change", e => {
+  if (e.target.id === "showThoughts") {
+    showThoughts = e.target.checked;
+    openedTurns.clear();
+    try { localStorage.setItem("worklog.showThoughts", showThoughts ? "1" : "0"); } catch {}
+    return render();
+  }
   if (e.target.id === "showAuto") {
     showAuto = e.target.checked;
     try { localStorage.setItem("worklog.showAuto", showAuto ? "1" : "0"); } catch {}

@@ -8,7 +8,8 @@ export type Author = "human" | "claude" | "auto";
 /** Kinds Claude writes through `worklog_post`. */
 export const CLAUDE_KINDS = ["decision", "question", "result", "issue", "idea", "note", "summary"] as const;
 export type ClaudeKind = (typeof CLAUDE_KINDS)[number];
-export type Kind = ClaudeKind | "prompt" | "answer" | "activity";
+/** `prompt` and `reply` are the conversation itself, captured by hooks; the rest is Claude's running commentary. */
+export type Kind = ClaudeKind | "prompt" | "reply" | "answer" | "activity";
 
 export interface TestRun {
   command: string;
@@ -24,6 +25,8 @@ export interface Post {
   author: Author;
   kind: Kind;
   text: string;
+  /** Short version of a long prompt or reply, added later by a patch record. */
+  summary?: string;
   tags: string[];
   re?: string;
   reason?: string;
@@ -41,6 +44,12 @@ export interface SessionMeta {
   claudeSession?: string;
   started: string;
   branch?: string;
+}
+
+/** Append-only amendment to an earlier post (the log itself is never rewritten). */
+export interface PatchRecord {
+  patch: string;
+  summary?: string;
 }
 
 export interface PendingItem {
@@ -159,17 +168,27 @@ export class Worklog {
     const text = await fs.readFile(this.sessionPath(session), "utf8").catch(() => "");
     let meta: SessionMeta | undefined;
     const posts: Post[] = [];
+    const patches: PatchRecord[] = [];
     for (const line of text.split("\n")) {
       if (!line.trim()) continue;
       try {
         const record = JSON.parse(line);
         if (record.meta) meta = record;
+        else if (record.patch) patches.push(record);
         else posts.push({ tags: [], ...record });
       } catch {
         // A torn or hand-edited line should not hide the rest of the log.
       }
     }
+    for (const { patch, ...fields } of patches) {
+      const post = posts.find((p) => p.id === patch);
+      if (post) Object.assign(post, fields);
+    }
     return { meta, posts };
+  }
+
+  async patch(session: string, record: PatchRecord): Promise<void> {
+    await fs.appendFile(this.sessionPath(session), `${JSON.stringify(record)}\n`);
   }
 
   async readAll(): Promise<{ sessions: SessionMeta[]; posts: Post[] }> {

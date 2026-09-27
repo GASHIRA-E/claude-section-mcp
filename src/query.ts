@@ -2,6 +2,7 @@ import { localStamp, type Post, type SessionMeta } from "./store.ts";
 
 export const KIND_LABELS: Record<Post["kind"], string> = {
   prompt: "指示",
+  reply: "返答",
   idea: "思いつき",
   decision: "決定",
   question: "要確認",
@@ -70,7 +71,8 @@ export function formatTime(iso: string, timeZone?: string): string {
 
 /** One post as compact Markdown for Claude to read. */
 export function renderPost(p: Post, timeZone?: string): string {
-  const head = `- [${p.id}] ${formatTime(p.ts, timeZone)} ${AUTHOR_LABELS[p.author]}/${KIND_LABELS[p.kind]}${p.re ? ` (re ${p.re})` : ""}: ${oneLine(p.text)}`;
+  const body = p.summary ?? (p.kind === "prompt" || p.kind === "reply" ? truncate(p.text, 200) : oneLine(p.text));
+  const head = `- [${p.id}] ${formatTime(p.ts, timeZone)} ${AUTHOR_LABELS[p.author]}/${KIND_LABELS[p.kind]}${p.re ? ` (re ${p.re})` : ""}: ${body}`;
   const extra: string[] = [];
   if (p.tags.length) extra.push(`tags: ${p.tags.map((t) => `#${t}`).join(" ")}`);
   if (p.reason) extra.push(`reason: ${oneLine(p.reason)}`);

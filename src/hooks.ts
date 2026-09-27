@@ -12,13 +12,15 @@ export interface HookInput {
   tool_name?: string;
   tool_input?: Record<string, unknown>;
   stop_hook_active?: boolean;
+  last_assistant_message?: string;
 }
 
 export interface HookResult {
   stdout?: string;
 }
 
-const PROMPT_MAX = 200;
+const PROMPT_MAX = 1000;
+const REPLY_MAX = 4000;
 const COMMAND_MAX = 120;
 const COMMANDS_PER_POST = 5;
 /** Permission modes in which nobody is watching each step, so the end-of-turn check applies. */
@@ -38,7 +40,7 @@ export async function handleHook(event: string, input: HookInput, log: Worklog, 
       if (!sid || !input.prompt?.trim()) return {};
       const session = await log.session(sid);
       await flushActivity(log, sid, session);
-      await log.append(session, { author: "human", kind: "prompt", text: truncate(input.prompt, PROMPT_MAX) });
+      await log.append(session, { author: "human", kind: "prompt", text: clip(input.prompt, PROMPT_MAX) });
       return {};
     }
     case "PostToolUse":
@@ -52,16 +54,21 @@ export async function handleHook(event: string, input: HookInput, log: Worklog, 
       if (!sid) return {};
       const session = await log.session(sid);
       await flushActivity(log, sid, session);
+      if (await shouldBlockStop(log, session, input)) {
+        // Claude keeps going and stops again, so its reply is recorded on that later Stop.
+        return {
+          stdout: JSON.stringify({
+            decision: "block",
+            reason:
+              "[worklog] You changed things this turn but recorded nothing in the work log. Before finishing, use worklog_post to record what you did and why (decision / result / issue), anything the human should check (question), and, if this ends the task, a summary with next steps. Tag each post by topic.",
+          }),
+        };
+      }
+      if (input.last_assistant_message?.trim()) {
+        await log.append(session, { author: "claude", kind: "reply", text: clip(input.last_assistant_message, REPLY_MAX) });
+      }
       await writeViewer(log).catch(() => undefined);
-      if (!UNATTENDED_MODES.has(input.permission_mode ?? "") || input.stop_hook_active) return {};
-      if (!(await workedThisTurn(log, session)) || (await claudePostedThisTurn(log, session))) return {};
-      return {
-        stdout: JSON.stringify({
-          decision: "block",
-          reason:
-            "[worklog] You changed things this turn but recorded nothing in the work log. Before finishing, use worklog_post to record what you did and why (decision / result / issue), anything the human should check (question), and, if this ends the task, a summary with next steps. Tag each post by topic.",
-        }),
-      };
+      return {};
     }
     default:
       return {};
@@ -89,7 +96,7 @@ function describeToolUse(input: HookInput, root: string, failed: boolean): Pendi
 }
 
 /** Turn this Claude session's pending tool uses into one `activity` post. */
-async function flushActivity(log: Worklog, sid: string, session: string): Promise<void> {
+export async function flushActivity(log: Worklog, sid: string, session: string): Promise<void> {
   const items = await log.takePending(sid);
   if (items.length === 0) return;
   const files = unique(items.flatMap((i) => (i.file ? [i.file] : [])));
@@ -121,12 +128,18 @@ async function postsSinceLastPrompt(log: Worklog, session: string) {
   return posts.slice(start + 1);
 }
 
-async function workedThisTurn(log: Worklog, session: string): Promise<boolean> {
-  return (await postsSinceLastPrompt(log, session)).some((p) => p.kind === "activity");
+async function shouldBlockStop(log: Worklog, session: string, input: HookInput): Promise<boolean> {
+  if (!UNATTENDED_MODES.has(input.permission_mode ?? "") || input.stop_hook_active) return false;
+  const turn = await postsSinceLastPrompt(log, session);
+  const worked = turn.some((p) => p.kind === "activity");
+  const commented = turn.some((p) => p.author === "claude" && p.kind !== "reply");
+  return worked && !commented;
 }
 
-async function claudePostedThisTurn(log: Worklog, session: string): Promise<boolean> {
-  return (await postsSinceLastPrompt(log, session)).some((p) => p.author === "claude");
+/** Keep line breaks (the viewer shows them) but cap the length. */
+function clip(text: string, max: number): string {
+  const trimmed = text.trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
 }
 
 function unique<T>(values: T[]): T[] {

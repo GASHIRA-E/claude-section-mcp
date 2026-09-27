@@ -45,6 +45,14 @@ describe("store", () => {
     assert.match(await fs.readFile(path.join(root, ".worklog/.gitignore"), "utf8"), /^\*$/m);
   });
 
+  it("applies summary patches without rewriting the log", async () => {
+    const session = await log.session(SID);
+    const prompt = await log.append(session, { author: "human", kind: "prompt", text: "長い指示".repeat(50) });
+    await log.patch(session, { patch: prompt.id, summary: "短い要約" });
+    assert.equal((await log.readSession(session)).posts[0].summary, "短い要約");
+    assert.equal((await log.readSession(session)).posts.length, 1);
+  });
+
   it("skips broken lines instead of failing", async () => {
     const session = await log.session(SID);
     await log.append(session, { author: "claude", kind: "note", text: "ok" });
@@ -95,7 +103,7 @@ describe("queries", () => {
 
 describe("hooks", () => {
   it("records prompts and folds tool use into one activity post per turn", async () => {
-    await hook("UserPromptSubmit", { prompt: `レシート読み取りを作って${"。".repeat(300)}` });
+    await hook("UserPromptSubmit", { prompt: `レシート読み取りを作って${"。".repeat(1200)}` });
     await hook("PostToolUse", { tool_name: "Write", tool_input: { file_path: path.join(root, "lib/ocr.ts") } });
     await hook("PostToolUse", { tool_name: "Edit", tool_input: { file_path: path.join(root, "app/page.tsx") } });
     await hook("PostToolUse", { tool_name: "Edit", tool_input: { file_path: path.join(root, "lib/ocr.ts") } });
@@ -110,7 +118,7 @@ describe("hooks", () => {
     const { posts } = await log.readAll();
     assert.equal(posts.length, 2);
     assert.equal(posts[0].kind, "prompt");
-    assert.equal(posts[0].text.length, 200);
+    assert.equal(posts[0].text.length, 1000);
     assert.deepEqual(
       { kind: posts[1].kind, text: posts[1].text, files: posts[1].files, commands: posts[1].commands, tests: posts[1].tests },
       {
@@ -140,6 +148,27 @@ describe("hooks", () => {
 
     await hook("UserPromptSubmit", { prompt: "質問だけ" });
     assert.equal((await hook("Stop", { permission_mode: "auto" })).stdout, undefined, "no work → no nagging");
+  });
+
+  it("records Claude's final reply, but not on a blocked stop", async () => {
+    await hook("UserPromptSubmit", { prompt: "直して\n2行目" });
+    await hook("PostToolUse", { tool_name: "Edit", tool_input: { file_path: path.join(root, "a.ts") } });
+    await hook("Stop", { permission_mode: "auto", last_assistant_message: "直しました" });
+    await log.append(await log.session(SID), { author: "claude", kind: "result", text: "直した" });
+    await hook("Stop", { permission_mode: "auto", stop_hook_active: true, last_assistant_message: "直しました（記録済み）" });
+
+    const { posts } = await log.readAll();
+    assert.equal(posts[0].text, "直して\n2行目", "prompt keeps its line breaks");
+    assert.deepEqual(posts.filter((p) => p.kind === "reply").map((p) => p.text), ["直しました（記録済み）"]);
+  });
+
+  it("does not count the reply itself as Claude having logged the turn", async () => {
+    await hook("UserPromptSubmit", { prompt: "a" });
+    await hook("PostToolUse", { tool_name: "Edit", tool_input: { file_path: path.join(root, "a.ts") } });
+    await hook("Stop", { permission_mode: "default", last_assistant_message: "done" });
+    await hook("PostToolUse", { tool_name: "Edit", tool_input: { file_path: path.join(root, "b.ts") } });
+    const blocked = await hook("Stop", { permission_mode: "auto", last_assistant_message: "done again" });
+    assert.equal(JSON.parse(blocked.stdout ?? "{}").decision, "block");
   });
 
   it("injects the hand-off at session start", async () => {

@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { openWorklog, timeZone } from "./config.ts";
+import { flushActivity } from "./hooks.ts";
 import { buildContext, openQuestions, postsForTag, relatedTags, renderPost, search, tagStats } from "./query.ts";
 import { CLAUDE_KINDS, type Worklog } from "./store.ts";
 import { writeViewer } from "./viewer.ts";
@@ -37,9 +38,15 @@ async function getLog(): Promise<Worklog> {
   return log;
 }
 
-/** Hooks key sessions by Claude's session id; use it too when Claude Code passes it down. */
+/**
+ * Hooks key sessions by Claude's session id; use it too when Claude Code passes it down.
+ * File changes gathered by hooks so far are posted first, so the log stays in the order things happened.
+ */
 async function currentSession(l: Worklog): Promise<string> {
-  return l.session(process.env.CLAUDE_CODE_SESSION_ID || undefined);
+  const sid = process.env.CLAUDE_CODE_SESSION_ID || undefined;
+  const session = await l.session(sid);
+  if (sid) await flushActivity(l, sid, session);
+  return session;
 }
 
 function text(t: string) {
