@@ -171,6 +171,27 @@ describe("hooks", () => {
     assert.equal(JSON.parse(blocked.stdout ?? "{}").decision, "block");
   });
 
+  it("leaves a /worklog:view turn out of the log but rebuilds the viewer", async () => {
+    await hook("UserPromptSubmit", { prompt: "直して" });
+    await hook("PostToolUse", { tool_name: "Edit", tool_input: { file_path: path.join(root, "a.ts") } });
+    await hook("Stop", { permission_mode: "default", last_assistant_message: "直しました" });
+    await fs.rm(path.join(root, ".worklog/view"), { recursive: true });
+
+    await hook("UserPromptSubmit", { prompt: "/worklog:view" });
+    await hook("PostToolUse", { tool_name: "Bash", tool_input: { command: "npx something" } });
+    const stop = await hook("Stop", { permission_mode: "auto", last_assistant_message: "リンクです" });
+    assert.equal(stop.stdout, undefined, "never blocked");
+    await fs.access(path.join(root, ".worklog/view/index.html"));
+
+    await hook("UserPromptSubmit", { prompt: "/view" });
+    // Interrupted: no Stop. The next turn is logged as usual.
+    await hook("UserPromptSubmit", { prompt: "次" });
+    await hook("Stop", { permission_mode: "default", last_assistant_message: "はい" });
+
+    const { posts } = await log.readAll();
+    assert.deepEqual(posts.map((p) => p.text), ["直して", "1ファイル変更", "直しました", "次", "はい"]);
+  });
+
   it("injects the hand-off at session start", async () => {
     const s = await log.session(SID);
     await log.append(s, { author: "claude", kind: "summary", text: "前回のまとめ", next: ["続き"] });

@@ -93,7 +93,7 @@ Claude と作ってきたものについて **「いつ・なぜそうなった�
 | hook | 動作 |
 |---|---|
 | `SessionStart` | 引き継ぎ情報を Claude に渡す |
-| `UserPromptSubmit` | 指示文を `prompt` として投稿 |
+| `UserPromptSubmit` | 指示文を `prompt` として投稿（`/worklog:view` は除く） |
 | `PostToolUse` / `PostToolUseFailure` | 変更ファイル・コマンド・テストの成否を一時的に貯める |
 | `Stop` | 貯めた内容を `activity` 1件にまとめて投稿し、Claude の返答を `reply` として記録し、ビューアを更新する。自動モードの終了チェックもここで行う |
 
@@ -118,6 +118,9 @@ Claude と作ってきたものについて **「いつ・なぜそうなった�
 ### HTML ビューア
 
 `.worklog/view/index.html`。ブラウザで開くだけで見られる（サーバー不要）。クラウドでは Claude が Artifact として公開し、スマホからも見られるようにする。
+
+- 毎ターンの `Stop` で作り直す。手元ではブラウザで開いたままにして再読み込みすれば最新になる
+- `/worklog:view` コマンド（`commands/view.md`）で Claude に画面を作り直させ、クラウドでは Artifact として公開させる。ログを見るのは作業ではないので、このコマンドのターン（指示・返答・その間の操作）は記録しない。`/view` と打った場合も同じ。途中で止めて `Stop` が来なかったときは、次の指示でこの扱いを解除する
 
 | 画面 | 内容 |
 |---|---|
