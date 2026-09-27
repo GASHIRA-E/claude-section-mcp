@@ -1,0 +1,661 @@
+<title>Worklog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#F2F5F3;--surface:#FFFFFF;--surface-2:#F7F9F8;--ink:#15201B;--muted:#5A6660;--faint:#8A958F;--line:#DBE2DE;
+  --accent:#0D6B5F;--accent-soft:#DCEEEA;
+  --human:#A3431B;--human-soft:#F6E5DC;
+  --claude:#0D6B5F;--claude-soft:#DCEEEA;
+  --auto:#66716B;--auto-soft:#E8ECEA;
+  --blue:#3D59A8;--blue-soft:#E1E7F6;
+  --warn:#94600A;--warn-soft:#FAEFD6;
+  --danger:#B02A1E;--danger-soft:#FBE3DF;
+  --ok:#2F7A3A;--ok-soft:#E0F0E2;
+  --radius:10px;
+  --sans:"IBM Plex Sans JP","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0E1412;--surface:#151D1A;--surface-2:#111815;--ink:#E5ECE8;--muted:#9BA7A1;--faint:#6F7B75;--line:#25302C;
+    --accent:#56BCAC;--accent-soft:#163029;--human:#E3916A;--human-soft:#3A2419;--claude:#56BCAC;--claude-soft:#163029;
+    --auto:#9AA5A0;--auto-soft:#222B28;--blue:#93A9EA;--blue-soft:#1C2540;--warn:#E1B354;--warn-soft:#33290F;
+    --danger:#F08A7E;--danger-soft:#3B1814;--ok:#7CCB86;--ok-soft:#18301B;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E1412;--surface:#151D1A;--surface-2:#111815;--ink:#E5ECE8;--muted:#9BA7A1;--faint:#6F7B75;--line:#25302C;
+  --accent:#56BCAC;--accent-soft:#163029;--human:#E3916A;--human-soft:#3A2419;--claude:#56BCAC;--claude-soft:#163029;
+  --auto:#9AA5A0;--auto-soft:#222B28;--blue:#93A9EA;--blue-soft:#1C2540;--warn:#E1B354;--warn-soft:#33290F;
+  --danger:#F08A7E;--danger-soft:#3B1814;--ok:#7CCB86;--ok-soft:#18301B;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.65;padding-inline:16px}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+[hidden]{display:none!important}
+
+.app{max-width:1180px;margin:16px auto 32px;display:grid;grid-template-columns:200px minmax(0,1fr) 260px;gap:20px;align-items:start}
+
+.nav{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:2px}
+.brand{font-weight:700;font-size:15px;padding:6px 10px 12px;overflow-wrap:anywhere}
+.brand small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.nav button{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:8px;color:var(--muted)}
+.nav button:hover{background:var(--surface)}
+.nav button[aria-current="page"]{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:inset 0 0 0 1px var(--line)}
+.nav button:focus-visible{outline:2px solid var(--accent)}
+.count{font-family:var(--mono);font-size:11.5px;min-width:22px;text-align:center;padding:0 6px;border-radius:999px;background:var(--warn-soft);color:var(--warn)}
+
+main{min-width:0}
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:12px}
+.head h1{font-size:20px;margin:0;text-wrap:balance;line-height:1.3;overflow-wrap:anywhere}
+.head p{margin:2px 0 0;color:var(--muted);font-size:13px}
+
+.feed{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.compact{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;padding:5px 16px 5px 60px;border-top:1px solid var(--line);font-size:12.5px;color:var(--faint);cursor:pointer}
+.compact:hover{background:var(--surface-2);color:var(--muted)}
+.compact .c-files{font-size:11.5px;overflow-wrap:anywhere}
+.day+.compact{border-top:0}
+.day{padding:6px 16px;font-size:12px;color:var(--faint);background:var(--surface-2);border-top:1px solid var(--line);font-family:var(--mono)}
+.day:first-child{border-top:0}
+.post{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;padding:13px 16px;border-top:1px solid var(--line);cursor:pointer}
+.day+.post{border-top:0}
+.post:first-child{border-top:0}
+.post:hover{background:var(--surface-2)}
+.post.reply{padding-left:40px}
+.post.focus{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--accent)}
+.post.auto .body{color:var(--muted)}
+/* Weight carries the page instead of filters: decisions and questions stand out, the rest steps back. */
+.post.primary{box-shadow:inset 3px 0 0 var(--claude)}
+.post.primary .body{font-weight:500;font-size:14.5px}
+.post.k-row-question{box-shadow:inset 3px 0 0 var(--warn);background:color-mix(in srgb,var(--warn-soft) 55%,var(--surface))}
+.post.secondary{padding-block:9px;grid-template-columns:34px minmax(0,1fr)}
+.post.secondary .av{width:26px;height:26px;font-size:11px;justify-self:center}
+.post.secondary .body{font-size:13px;color:var(--muted)}
+.post.secondary .reason{font-size:12.5px}
+.av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px}
+.av.human{background:var(--human-soft);color:var(--human)}
+.av.claude{background:var(--claude-soft);color:var(--claude)}
+.av.auto{background:var(--auto-soft);color:var(--auto)}
+.meta{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;font-size:12.5px;color:var(--muted)}
+.meta .name{color:var(--ink);font-weight:500}
+.meta .id{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.kind{font-size:11.5px;font-weight:500;padding:0 8px;border-radius:999px;line-height:20px;white-space:nowrap}
+.k-prompt,.k-idea{background:var(--human-soft);color:var(--human)}
+.k-decision{background:var(--claude-soft);color:var(--claude)}
+.k-question{background:var(--warn-soft);color:var(--warn)}
+.k-answer,.k-result{background:var(--ok-soft);color:var(--ok)}
+.k-issue{background:var(--danger-soft);color:var(--danger)}
+.k-note,.k-activity{background:var(--auto-soft);color:var(--auto)}
+.k-reply{background:var(--claude-soft);color:var(--claude)}
+.k-summary{background:var(--blue-soft);color:var(--blue)}
+.body{margin:3px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
+.clamp3{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.reason{margin:6px 0 0;font-size:13px;color:var(--muted);padding-left:10px;border-left:2px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere}
+.list{margin:6px 0 0;padding-left:1.2em;font-size:13px}
+.files{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
+.test-ok{color:var(--ok)}
+.test-ng{color:var(--danger)}
+.foot{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;margin-top:6px;font-size:12.5px}
+.tag{all:unset;cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--accent)}
+.tag:hover{text-decoration:underline}
+.tag:focus-visible{outline:2px solid var(--accent)}
+.stat{color:var(--faint);font-size:12px}
+.flag-open{font-size:12px;color:var(--warn);font-weight:500}
+.flag-done{font-size:12px;color:var(--ok)}
+.empty{padding:20px 16px;margin:0;color:var(--muted)}
+
+.rows{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding:12px 16px;border-top:1px solid var(--line);cursor:pointer;align-items:start}
+.row:first-child{border-top:0}
+.row:hover{background:var(--surface-2)}
+.row .t{font-family:var(--mono);color:var(--accent);font-weight:500;overflow-wrap:anywhere}
+.row .title{font-weight:500;overflow-wrap:anywhere}
+.row .s{color:var(--muted);font-size:13px;margin-top:2px;overflow-wrap:anywhere}
+.row .r{text-align:right;font-size:12px;color:var(--faint);white-space:nowrap;font-family:var(--mono)}
+.bar{height:4px;border-radius:2px;background:var(--accent-soft);margin-top:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.facts{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:var(--muted);margin:-4px 0 12px}
+.related{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;margin-bottom:14px;font-size:12.5px;color:var(--faint)}
+.btn{cursor:pointer;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 12px;font-size:12.5px}
+
+/* ---------- chat (session view) ---------- */
+.chat{display:flex;flex-direction:column;gap:22px}
+.turn{display:flex;flex-direction:column;gap:10px}
+.turn-time{align-self:center;font-family:var(--mono);font-size:11.5px;color:var(--faint);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:0 10px}
+.msg{display:flex;gap:10px;align-items:flex-end;max-width:min(560px,92%)}
+.msg.user{align-self:flex-end;flex-direction:row-reverse}
+.bubble{padding:10px 14px;border-radius:16px;overflow-wrap:anywhere;min-width:0}
+.msg.user .bubble{background:var(--human-soft);border-bottom-right-radius:4px}
+.msg.claude .bubble{background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px}
+.bubble .main{margin:0;white-space:pre-wrap}
+.bubble .clamp{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+.bubble details{margin-top:6px;font-size:12.5px;color:var(--muted)}
+.bubble summary{cursor:pointer;color:var(--accent);list-style:none}
+.bubble summary::-webkit-details-marker{display:none}
+.bubble details p{white-space:pre-wrap;margin:6px 0 0}
+.msg time{font-family:var(--mono);font-size:11px;color:var(--faint);white-space:nowrap;padding-bottom:2px}
+.msg .av{flex:none;width:28px;height:28px;font-size:12px}
+.mono-log{margin-left:38px;border-left:2px dotted var(--line);padding:2px 0 2px 12px;display:flex;flex-direction:column;gap:5px;max-width:620px}
+.thought{font-size:13px;color:var(--muted);cursor:pointer;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:baseline}
+.thought:hover .t-text{color:var(--ink)}
+.thought .t-kind{font-size:11px;font-weight:500;border-radius:4px;padding:0 5px;line-height:18px;white-space:nowrap}
+.thought .t-text{overflow-wrap:anywhere}
+.thought .t-sub{display:block;font-size:12px;color:var(--faint)}
+.thought.q .t-text{color:var(--warn);font-weight:500}
+.thought.auto .t-text{font-family:var(--mono);font-size:12px}
+.fold{all:unset;cursor:pointer;margin-left:38px;font-size:12.5px;color:var(--faint);border:1px dashed var(--line);border-radius:999px;padding:1px 10px;align-self:flex-start;max-width:calc(100% - 38px);overflow-wrap:anywhere}
+.fold.open{border-style:solid;color:var(--muted)}
+.strip{letter-spacing:1px;margin-left:4px}
+.msg.mini{max-width:min(520px,88%);cursor:pointer}
+.msg.mini .bubble{padding:8px 12px;border-color:var(--claude-soft);background:var(--surface)}
+.msg.mini .bubble{position:relative}
+.msg.mini.d .bubble{border-color:var(--claude)}
+.msg.mini.q .bubble{border-color:var(--warn)}
+.msg.mini.q.open .bubble{background:var(--warn-soft)}
+.msg.mini.q.open .bubble::after{content:"";position:absolute;top:-4px;right:-4px;width:10px;height:10px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 2px var(--bg)}
+.mark{display:inline-block;vertical-align:1px;margin-right:7px}
+.mark.d{width:8px;height:8px;background:var(--claude);transform:rotate(45deg)}
+.mark.q{width:16px;height:16px;border-radius:50%;background:var(--warn);color:var(--surface);font-size:11px;font-weight:700;line-height:16px;text-align:center;vertical-align:1px}
+.msg.mini.q:not(.open) .mark.q{background:var(--faint)}
+.msg.mini .b-reason{margin:4px 0 0;font-size:12.5px;color:var(--muted);white-space:pre-wrap;padding-left:15px}
+.msg.mini .b-tags{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:4px}
+.t-time{font-size:11px;color:var(--faint);margin-right:6px}
+.fold:hover{color:var(--accent)}
+.fold:focus-visible{outline:2px solid var(--accent)}
+
+/* ---------- tag graph ---------- */
+.graph-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
+.tag-graph{display:block;width:100%;height:auto}
+.tag-graph .edge{stroke:var(--line);stroke-linecap:round;transition:stroke .15s,opacity .15s}
+.tag-graph .node{cursor:pointer;outline:none}
+.tag-graph .node circle{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5;transition:opacity .15s,stroke-width .15s}
+.tag-graph .node.open circle{fill:var(--warn-soft);stroke:var(--warn)}
+.tag-graph .node text{font-family:var(--mono);font-size:12px;fill:var(--ink);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round;transition:opacity .15s}
+.tag-graph .node:hover circle,.tag-graph .node:focus-visible circle{stroke-width:3}
+.tag-graph.focusing .node:not(.lit) circle,.tag-graph.focusing .node:not(.lit) text{opacity:.25}
+.tag-graph.focusing .edge{opacity:.25}
+.tag-graph.focusing .edge.lit{opacity:1;stroke:var(--accent)}
+@media (prefers-reduced-motion:no-preference){
+  .tag-graph .node{animation:pop .5s cubic-bezier(.2,.9,.3,1.3) both;animation-delay:var(--d);transform-box:fill-box;transform-origin:center}
+  @keyframes pop{from{transform:scale(.6)}to{transform:scale(1)}}
+}
+
+aside{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.card h3{margin:0 0 8px;font-size:13px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stats div{font-size:12px;color:var(--muted)}
+.stats b{display:block;font-family:var(--mono);font-size:20px;color:var(--ink);font-weight:500;line-height:1.2}
+.stats .warn b{color:var(--warn)}
+.cloud{display:flex;flex-wrap:wrap;gap:4px 10px}
+.note{font-size:12px;color:var(--faint);margin:0}
+
+@media (max-width:1040px){
+  .app{grid-template-columns:180px minmax(0,1fr)}
+  aside{grid-column:2;position:static}
+}
+@media (max-width:720px){
+  .app{grid-template-columns:minmax(0,1fr);gap:14px}
+  .nav{position:static;flex-direction:row;flex-wrap:wrap;gap:4px}
+  .brand{width:100%;padding:0 2px 4px}
+  .nav button{padding:6px 10px}
+  aside{grid-column:1}
+  .post{padding:12px}
+  .post.reply{padding-left:24px}
+}
+</style>
+
+<div class="app">
+  <nav class="nav" aria-label="表示切り替え">
+    <div class="brand" id="brand"></div>
+    <button data-view="sessions">セッション</button>
+    <button data-view="tags">タグ</button>
+    <button data-view="inbox">要対応 <span class="count" id="inboxCount"></span></button>
+  </nav>
+  <main id="main" aria-live="polite"></main>
+  <aside>
+    <div class="card"><h3>概要</h3><div class="stats" id="stats"></div></div>
+    <div class="card"><h3>よく使うタグ</h3><div class="cloud" id="cloud"></div></div>
+    <p class="note" id="generated"></p>
+  </aside>
+</div>
+
+<script>
+const DATA = /*__WORKLOG_DATA__*/null || {project:"sample",generated:new Date().toISOString(),sessions:[],posts:[]};
+const POSTS = DATA.posts;
+const byId = Object.fromEntries(POSTS.map(p => [p.id, p]));
+const AUTHORS = {human:{name:"あなた",av:"人"},claude:{name:"Claude",av:"C"},auto:{name:"自動記録",av:"自"}};
+const KINDS = {prompt:"指示",reply:"返答",idea:"思いつき",decision:"決定",question:"要確認",answer:"回答",issue:"問題",result:"成果",note:"メモ",summary:"まとめ",activity:"変更"};
+const answered = new Set(POSTS.filter(p => p.kind === "answer" && p.re).map(p => p.re));
+const openQs = POSTS.filter(p => p.kind === "question" && !answered.has(p.id));
+/** An issue counts as resolved when Claude replied to it, or when a later test run in the same session passed. */
+const resolvedIssues = new Set(POSTS.filter(p => p.kind === "issue" && (
+  POSTS.some(q => q.re === p.id && q.author === "claude") ||
+  POSTS.some(q => q.session === p.session && q.ts > p.ts && q.tests?.length && q.tests.every(t => t.ok))
+)).map(p => p.id));
+const repliesOf = id => POSTS.filter(p => p.re === id);
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dfDate = new Intl.DateTimeFormat("ja-JP", {year:"numeric",month:"2-digit",day:"2-digit",weekday:"short"});
+const dfTime = new Intl.DateTimeFormat("ja-JP", {hour:"2-digit",minute:"2-digit"});
+const dfShort = new Intl.DateTimeFormat("ja-JP", {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+const day = ts => dfDate.format(new Date(ts));
+const time = ts => dfTime.format(new Date(ts));
+const short = ts => ts ? dfShort.format(new Date(ts)) : "";
+
+function tagStats(posts) {
+  const m = new Map();
+  for (const p of posts) for (const t of p.tags || []) {
+    const s = m.get(t) || {tag:t,count:0,first:p.ts,last:p.ts};
+    s.count++; if (p.ts < s.first) s.first = p.ts; if (p.ts > s.last) s.last = p.ts;
+    m.set(t, s);
+  }
+  return [...m.values()].sort((a, b) => b.count - a.count || b.last.localeCompare(a.last));
+}
+const TAGS = tagStats(POSTS);
+
+function sessionInfo(meta) {
+  const posts = POSTS.filter(p => p.session === meta.session);
+  const prompt = posts.find(p => p.kind === "prompt");
+  const summary = [...posts].reverse().find(p => p.kind === "summary");
+  const title = prompt ? (prompt.summary || prompt.text) : summary ? summary.text : "（指示の記録なし）";
+  return {...meta, posts, title: title.length > 60 ? title.slice(0, 59) + "…" : title, summary, last: posts.at(-1)?.ts || meta.started};
+}
+const SESSIONS = DATA.sessions.map(sessionInfo).filter(s => s.posts.length).sort((a, b) => b.last.localeCompare(a.last));
+
+// ---------------------------------------------------------------- state
+let view = {name: "sessions"};
+const openedFolds = new Set();
+
+const tagBtn = t => `<button class="tag" data-tag="${esc(t)}">#${esc(t)}</button>`;
+
+function postHtml(p, opts = {}) {
+  const a = AUTHORS[p.author] || AUTHORS.auto;
+  const replies = repliesOf(p.id).length;
+  const files = p.files || [];
+  const bits = [];
+  if (p.reason) bits.push(`<p class="reason">理由: ${esc(p.reason)}</p>`);
+  if (p.next?.length) bits.push(`<ul class="list">${p.next.map(n => `<li>${esc(n)}</li>`).join("")}</ul>`);
+  if (files.length) bits.push(`<div class="files">${files.slice(0, 6).map(esc).join(", ")}${files.length > 6 ? ` ほか${files.length - 6}件` : ""}</div>`);
+  if (p.tests?.length) bits.push(`<div class="files">${p.tests.map(t => `<span class="${t.ok ? "test-ok" : "test-ng"}">${t.ok ? "✓" : "✗"}</span> ${esc(t.command)}`).join("<br>")}</div>`);
+  if (p.commands?.length) bits.push(`<div class="files">${p.commands.map(c => "$ " + esc(c)).join("<br>")}</div>`);
+  const flags = [];
+  if (p.kind === "question") flags.push(answered.has(p.id) ? `<span class="flag-done">回答済み</span>` : `<span class="flag-open">未解決</span>`);
+  if (p.re && !opts.inThread) flags.push(`<span class="stat">↳ ${esc(p.re)} への返信</span>`);
+  if (replies && !opts.inThread) flags.push(`<span class="stat">返信 ${replies}</span>`);
+  const foot = [...(p.tags || []).map(tagBtn), ...flags];
+  const weight = ["decision", "question"].includes(p.kind) ? " primary" : ["issue", "result", "note", "answer", "idea"].includes(p.kind) ? " secondary" : "";
+  return `<article class="post ${esc(p.author)} k-row-${esc(p.kind)}${weight}${opts.reply ? " reply" : ""}${opts.focus ? " focus" : ""}" data-post="${esc(p.id)}" tabindex="0">
+    <div class="av ${esc(p.author)}" aria-hidden="true">${a.av}</div>
+    <div>
+      <div class="meta"><span class="name">${a.name}</span><span class="kind k-${esc(p.kind)}">${KINDS[p.kind] || esc(p.kind)}</span><span class="mono">${opts.withDate ? short(p.ts) : time(p.ts)}</span><span class="id">${esc(p.id)}</span></div>
+      ${p.text ? `<p class="body${p.kind === "prompt" || p.kind === "reply" ? " clamp3" : ""}">${esc(p.summary || p.text)}</p>` : ""}
+      ${bits.join("")}
+      ${foot.length ? `<div class="foot">${foot.join("")}</div>` : ""}
+    </div>
+  </article>`;
+}
+
+/** Automatic records stay one quiet line so the meaningful posts carry the page. */
+function compactHtml(p) {
+  const runs = p.tests || [];
+  const strip = runs.length ? ` <span class="strip mono">${runs.map(t => `<span class="${t.ok ? "test-ok" : "test-ng"}">${t.ok ? "✓" : "✗"}</span>`).join("")}</span>` : "";
+  const files = (p.files || []).slice(0, 3).join(", ") + ((p.files || []).length > 3 ? ` ほか${p.files.length - 3}件` : "");
+  return `<div class="compact" data-post="${esc(p.id)}" tabindex="0"><span class="mono">${time(p.ts)}</span><span>${esc(p.text)}${strip}</span>${files ? `<span class="c-files mono">${esc(files)}</span>` : ""}</div>`;
+}
+
+function listWithDays(posts, opts = {}) {
+  if (!posts.length) return `<p class="empty">該当する投稿はありません。</p>`;
+  let current = "";
+  return posts.map(p => {
+    const d = day(p.ts);
+    const sep = d !== current ? `<div class="day">${d}</div>` : "";
+    current = d;
+    return sep + (p.author === "auto" ? compactHtml(p) : postHtml(p, opts));
+  }).join("");
+}
+
+function renderTags() {
+  const max = TAGS[0]?.count || 1;
+  return `<div class="head"><div><h1>タグ</h1><p>丸の大きさは記録の数、線は同じ記録に一緒に付いたタグ、黄色は未回答の確認がある話題です。丸を押すと、その話題の経緯をたどれます。</p></div></div>
+  ${TAGS.length > 1 ? `<div class="graph-wrap"><svg class="tag-graph" id="tagGraph" role="img" aria-label="タグのつながりの図"></svg></div>` : ""}
+  <div class="rows">${TAGS.map(t => `<div class="row" data-tag="${esc(t.tag)}" tabindex="0"><div><div class="t">#${esc(t.tag)}</div><div class="bar"><i style="width:${Math.max(4, t.count / max * 100)}%"></i></div></div><div class="r">${t.count}件<br>${short(t.last)}</div></div>`).join("") || `<p class="empty">まだタグがありません。</p>`}</div>`;
+}
+
+const GRAPH_MAX_TAGS = 30;
+
+/** Tags as nodes, co-occurrence on the same post as weighted edges. */
+function tagNetwork() {
+  const tags = TAGS.slice(0, GRAPH_MAX_TAGS);
+  const index = new Map(tags.map((t, i) => [t.tag, i]));
+  const weights = new Map();
+  for (const p of POSTS) {
+    const ts = (p.tags || []).filter(t => index.has(t));
+    for (let a = 0; a < ts.length; a++) for (let b = a + 1; b < ts.length; b++) {
+      const key = [index.get(ts[a]), index.get(ts[b])].sort((x, y) => x - y).join("-");
+      weights.set(key, (weights.get(key) || 0) + 1);
+    }
+  }
+  const edges = [...weights].map(([k, w]) => { const [a, b] = k.split("-").map(Number); return {a, b, w}; });
+  const openTags = new Set(openQs.flatMap(p => p.tags || []));
+  const nodes = tags.map(t => ({...t, open: openTags.has(t.tag)}));
+  return {nodes, edges};
+}
+
+/** Small deterministic force layout: nodes repel, edges pull, a weak pull keeps everything centred. */
+function layoutNetwork({nodes, edges}, width, height) {
+  const n = nodes.length;
+  const pos = nodes.map((_, i) => {
+    const angle = (i / n) * Math.PI * 2;
+    return {x: Math.cos(angle) * width * 0.3, y: Math.sin(angle) * height * 0.3};
+  });
+  const k = Math.sqrt((width * height) / Math.max(n, 1)) * 0.55;
+  let temp = width / 8;
+  for (let step = 0; step < 320; step++) {
+    const disp = pos.map(() => ({x: 0, y: 0}));
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      const dx = pos[i].x - pos[j].x, dy = pos[i].y - pos[j].y;
+      const d = Math.max(Math.hypot(dx, dy), 0.01), f = (k * k) / d;
+      disp[i].x += (dx / d) * f; disp[i].y += (dy / d) * f;
+      disp[j].x -= (dx / d) * f; disp[j].y -= (dy / d) * f;
+    }
+    for (const {a, b, w} of edges) {
+      const dx = pos[a].x - pos[b].x, dy = pos[a].y - pos[b].y;
+      const d = Math.max(Math.hypot(dx, dy), 0.01), f = (d * d) / k * Math.min(1 + w * 0.3, 2.5);
+      disp[a].x -= (dx / d) * f; disp[a].y -= (dy / d) * f;
+      disp[b].x += (dx / d) * f; disp[b].y += (dy / d) * f;
+    }
+    for (let i = 0; i < n; i++) {
+      disp[i].x -= pos[i].x * 0.08; disp[i].y -= pos[i].y * 0.12;
+      const d = Math.max(Math.hypot(disp[i].x, disp[i].y), 0.01), m = Math.min(d, temp);
+      pos[i].x += (disp[i].x / d) * m; pos[i].y += (disp[i].y / d) * m;
+    }
+    temp *= 0.985;
+  }
+  // Fit into the box, leaving room for circles and the labels under them.
+  const xs = pos.map(p => p.x), ys = pos.map(p => p.y);
+  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const padX = 70, padTop = 34, padBottom = 44;
+  return pos.map(p => ({
+    x: padX + (maxX === minX ? 0.5 : (p.x - minX) / (maxX - minX)) * (width - padX * 2),
+    y: padTop + (maxY === minY ? 0.5 : (p.y - minY) / (maxY - minY)) * (height - padTop - padBottom),
+  }));
+}
+
+/** Rough rendered width of a 12px monospace label: CJK glyphs are about twice as wide as Latin ones. */
+function labelWidth(text) {
+  return [...text].reduce((w, ch) => w + (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 12 : 7.3), 0);
+}
+
+/** Nudge nodes apart until no circle-plus-label box overlaps another, staying inside the drawing. */
+function separateLabels(pos, radii, labels, width, height) {
+  const box = i => {
+    const half = Math.max(radii[i], labels[i] / 2) + 4;
+    return {l: pos[i].x - half, r: pos[i].x + half, t: pos[i].y - radii[i] - 4, b: pos[i].y + radii[i] + 20};
+  };
+  for (let round = 0; round < 120; round++) {
+    let moved = false;
+    for (let i = 0; i < pos.length; i++) for (let j = i + 1; j < pos.length; j++) {
+      const A = box(i), B = box(j);
+      const ox = Math.min(A.r, B.r) - Math.max(A.l, B.l), oy = Math.min(A.b, B.b) - Math.max(A.t, B.t);
+      if (ox <= 0 || oy <= 0) continue;
+      moved = true;
+      // Push along the axis that needs the smaller move.
+      if (ox < oy) { const d = (ox / 2 + 1) * (pos[i].x < pos[j].x ? -1 : 1); pos[i].x += d; pos[j].x -= d; }
+      else { const d = (oy / 2 + 1) * (pos[i].y < pos[j].y ? -1 : 1); pos[i].y += d; pos[j].y -= d; }
+    }
+    for (let i = 0; i < pos.length; i++) {
+      const half = Math.max(radii[i], labels[i] / 2) + 4;
+      pos[i].x = Math.min(width - half, Math.max(half, pos[i].x));
+      pos[i].y = Math.min(height - radii[i] - 20, Math.max(radii[i] + 6, pos[i].y));
+    }
+    if (!moved) break;
+  }
+  return pos;
+}
+
+function drawTagGraph() {
+  const svg = document.getElementById("tagGraph");
+  if (!svg) return;
+  const width = Math.max(320, Math.round(svg.parentElement.clientWidth));
+  const height = Math.round(width < 560 ? width * 1.1 : Math.min(460, Math.max(280, width * 0.62)));
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const net = tagNetwork();
+  const maxCount = Math.max(...net.nodes.map(t => t.count));
+  const maxW = Math.max(1, ...net.edges.map(e => e.w));
+  const radius = t => 7 + Math.sqrt(t.count / maxCount) * (width < 560 ? 12 : 17);
+  const pos = separateLabels(layoutNetwork(net, width, height), net.nodes.map(radius), net.nodes.map(t => labelWidth("#" + t.tag)), width, height);
+  const edges = net.edges.map(({a, b, w}) =>
+    `<line class="edge" data-a="${a}" data-b="${b}" x1="${pos[a].x.toFixed(1)}" y1="${pos[a].y.toFixed(1)}" x2="${pos[b].x.toFixed(1)}" y2="${pos[b].y.toFixed(1)}" style="stroke-width:${(1 + (w / maxW) * 4).toFixed(1)}"></line>`).join("");
+  const nodes = net.nodes.map((t, i) => {
+    const r = radius(t);
+    return `<g class="node${t.open ? " open" : ""}" data-tag="${esc(t.tag)}" data-i="${i}" tabindex="0" role="button" aria-label="#${esc(t.tag)}（${t.count}件）を開く" style="--d:${i * 40}ms">
+      <circle cx="${pos[i].x.toFixed(1)}" cy="${pos[i].y.toFixed(1)}" r="${r.toFixed(1)}"></circle>
+      <text x="${pos[i].x.toFixed(1)}" y="${(pos[i].y + r + 14).toFixed(1)}" text-anchor="middle">#${esc(t.tag)}</text>
+      <title>#${esc(t.tag)} ・ ${t.count}件${t.open ? " ・ 未回答の確認あり" : ""}</title></g>`;
+  }).join("");
+  svg.innerHTML = `<g class="edges">${edges}</g><g class="nodes">${nodes}</g>`;
+
+  // Hovering a tag lights up its neighbours.
+  const neighbours = i => new Set(net.edges.flatMap(e => e.a === i ? [e.b] : e.b === i ? [e.a] : []));
+  svg.querySelectorAll(".node").forEach(g => {
+    const i = Number(g.dataset.i);
+    const on = () => {
+      const near = neighbours(i);
+      svg.classList.add("focusing");
+      svg.querySelectorAll(".node").forEach(o => o.classList.toggle("lit", Number(o.dataset.i) === i || near.has(Number(o.dataset.i))));
+      svg.querySelectorAll(".edge").forEach(l => l.classList.toggle("lit", Number(l.dataset.a) === i || Number(l.dataset.b) === i));
+    };
+    const off = () => svg.classList.remove("focusing");
+    g.addEventListener("mouseenter", on); g.addEventListener("focus", on);
+    g.addEventListener("mouseleave", off); g.addEventListener("blur", off);
+  });
+}
+
+function renderTag(tag) {
+  const direct = new Set(POSTS.filter(p => (p.tags || []).includes(tag)).map(p => p.id));
+  const posts = POSTS.filter(p => direct.has(p.id) || (p.kind === "answer" && direct.has(p.re)));
+  const stat = TAGS.find(t => t.tag === tag);
+  const related = tagStats(POSTS.filter(p => direct.has(p.id)).map(p => ({...p, tags: p.tags.filter(t => t !== tag)}))).slice(0, 12);
+  const open = posts.filter(p => p.kind === "question" && !answered.has(p.id)).length;
+  return `<div class="head"><div><h1 class="mono">#${esc(tag)}</h1></div><button class="btn" data-view="tags">タグ一覧へ</button></div>
+  <div class="facts"><span>${stat ? stat.count : 0}件</span><span>${stat ? short(stat.first) + " 〜 " + short(stat.last) : ""}</span>${open ? `<span class="flag-open">未解決 ${open}件</span>` : ""}</div>
+  ${related.length ? `<div class="related">関連タグ ${related.map(t => tagBtn(t.tag)).join("")}</div>` : ""}
+  <div class="feed">${listWithDays(posts)}</div>`;
+}
+
+function renderInbox() {
+  return `<div class="head"><div><h1>要対応</h1><p>Claude から人間への確認事項のうち、まだ回答していないものです。Claude との会話で返事をすると、回答として記録されます。</p></div></div>
+  <div class="feed">${openQs.length ? [...openQs].reverse().map(p => postHtml(p, {withDate: true})).join("") : `<p class="empty">未解決の確認事項はありません。</p>`}</div>`;
+}
+
+function renderSessions() {
+  return `<div class="head"><div><h1>セッション</h1><p>Claude が作業した単位の一覧です。</p></div></div>
+  <div class="rows">${SESSIONS.map(s => `<div class="row" data-session="${esc(s.session)}" tabindex="0"><div><div class="title">${esc(s.title)}</div>
+    <div class="s">${s.summary ? "まとめ: " + esc(s.summary.text.slice(0, 80)) : s.posts.length + "件の投稿"}${s.branch ? ` ・ <span class="mono">${esc(s.branch)}</span>` : ""}</div></div>
+    <div class="r">${short(s.started)}<br>${s.posts.length}件</div></div>`).join("") || `<p class="empty">まだセッションがありません。</p>`}</div>`;
+}
+
+/** Split a session into turns: each prompt, the work that followed, and Claude's reply. */
+function turnsOf(posts) {
+  const turns = [];
+  let cur = null;
+  for (const p of posts) {
+    if (p.kind === "prompt" || !cur) { cur = {prompt: null, work: [], replies: []}; turns.push(cur); }
+    if (p.kind === "prompt") cur.prompt = p;
+    else if (p.kind === "reply") cur.replies.push(p);
+    else cur.work.push(p);
+  }
+  return turns;
+}
+
+function bubbleBody(p, full = false) {
+  if (p.summary) {
+    return `<p class="main">${esc(p.summary)}</p><details><summary>原文を表示</summary><p>${esc(p.text)}</p></details>`;
+  }
+  const long = !full && (p.text.length > 280 || p.text.split("\n").length > 6);
+  return long
+    ? `<p class="main clamp">${esc(p.text)}</p><details><summary>全文を表示</summary><p>${esc(p.text)}</p></details>`
+    : `<p class="main">${esc(p.text)}</p>`;
+}
+
+function thoughtHtml(p) {
+  const isQ = p.kind === "question" && !answered.has(p.id);
+  let text = p.text, sub = "";
+  if (p.kind === "activity") {
+    const bits = [];
+    if (p.files?.length) bits.push(p.files.slice(0, 3).join(", ") + (p.files.length > 3 ? ` ほか${p.files.length - 3}件` : ""));
+    if (p.tests?.some(t => !t.ok)) bits.push("失敗: " + p.tests.filter(t => !t.ok).map(t => t.command).join(", "));
+    sub = bits.join(" ・ ");
+  } else if (p.reason) sub = "理由: " + p.reason;
+  else if (p.next?.length) sub = "次: " + p.next.join(" / ");
+  const tags = (p.tags || []).map(t => "#" + t).join(" ");
+  return `<div class="thought${isQ ? " q" : ""}${p.author === "auto" ? " auto" : ""}" data-post="${esc(p.id)}" tabindex="0">
+    <span class="t-kind k-${esc(p.kind)}">${KINDS[p.kind] || esc(p.kind)}</span>
+    <span class="t-text"><span class="t-time mono">${time(p.ts)}</span>${esc(text.split("\n")[0])}${p.kind === "issue" ? (resolvedIssues.has(p.id) ? ` <span class="flag-done">解決</span>` : ` <span class="flag-open">未解決</span>`) : ""}${sub ? `<span class="t-sub">${esc(sub)}</span>` : ""}${tags ? `<span class="t-sub mono">${esc(tags)}</span>` : ""}</span>
+  </div>`;
+}
+
+/** Kinds promoted to Claude's own bubbles in the chat; everything else folds between them. */
+const BUBBLE_KINDS = new Set(["decision", "question"]);
+
+function foldLabel(items) {
+  const count = k => items.filter(p => p.kind === k).length;
+  const bits = [];
+  const issues = items.filter(p => p.kind === "issue");
+  if (issues.length) {
+    const open = issues.filter(p => !resolvedIssues.has(p.id)).length;
+    bits.push(`問題${issues.length}件${open ? `（未解決${open}）` : "（解決済み）"}`);
+  }
+  for (const [k, l] of [["result", "成果"], ["answer", "回答"], ["idea", "思いつき"], ["note", "メモ"], ["summary", "まとめ"], ["activity", "変更"]]) {
+    if (count(k)) bits.push(`${l}${count(k)}件`);
+  }
+  const runs = items.flatMap(p => p.tests || []);
+  const strip = runs.length ? ` <span class="strip mono">${runs.map(t => `<span class="${t.ok ? "test-ok" : "test-ng"}">${t.ok ? "✓" : "✗"}</span>`).join("")}</span>` : "";
+  return bits.join("・") + strip;
+}
+
+/**
+ * Decisions and questions are told apart by the bubble itself, not by a label row:
+ * a decision leads with a teal diamond; a question is amber with a "?" mark, and while
+ * it is unanswered the bubble is filled and carries a dot.
+ */
+function claudeBubble(p) {
+  const isQ = p.kind === "question";
+  const open = isQ && !answered.has(p.id);
+  const label = isQ ? (open ? "要確認（未回答）" : "要確認（回答済み）") : "決定";
+  const mark = isQ ? `<span class="mark q" aria-hidden="true">?</span>` : `<span class="mark d" aria-hidden="true"></span>`;
+  return `<div class="msg claude mini ${isQ ? "q" : "d"}${open ? " open" : ""}" data-post="${esc(p.id)}" tabindex="0" title="${label}" aria-label="${label}"><div class="av claude" aria-hidden="true">C</div>
+    <div class="bubble"><p class="main">${mark}${esc(p.text)}</p>
+      ${p.reason ? `<p class="b-reason">${esc(p.reason)}</p>` : ""}
+      ${p.tags?.length ? `<div class="b-tags">${p.tags.map(tagBtn).join("")}</div>` : ""}
+    </div><time>${time(p.ts)}</time></div>`;
+}
+
+function renderSession(id) {
+  const s = SESSIONS.find(x => x.session === id);
+  if (!s) return renderSessions();
+  const html = turnsOf(s.posts).map((t, i) => {
+    const firstTs = (t.prompt || t.work[0] || t.replies[0])?.ts;
+    const lastTs = (t.replies.at(-1) || t.work.at(-1) || t.prompt)?.ts;
+    const mins = firstTs && lastTs ? Math.round((new Date(lastTs) - new Date(firstTs)) / 60000) : 0;
+    const parts = [];
+    if (firstTs) parts.push(`<span class="turn-time">${short(firstTs)}${mins >= 5 ? ` ・ ${mins}分` : ""}</span>`);
+    if (t.prompt) parts.push(`<div class="msg user"><div class="bubble">${bubbleBody(t.prompt)}</div><time>${time(t.prompt.ts)}</time></div>`);
+
+    // Decisions and questions become bubbles; the work between them folds into one line.
+    let pending = [], seg = 0;
+    const flush = () => {
+      const items = pending;
+      pending = [];
+      if (!items.length) return;
+      const key = `${s.session}:${i}:${seg++}`;
+      const open = openedFolds.has(key);
+      parts.push(`<button class="fold${open ? " open" : ""}" data-fold="${esc(key)}" aria-expanded="${open}">${open ? "▾" : "▸"} ${foldLabel(items)}</button>`);
+      if (open) parts.push(`<div class="mono-log">${items.map(thoughtHtml).join("")}</div>`);
+    };
+    for (const p of t.work) {
+      if (BUBBLE_KINDS.has(p.kind)) { flush(); parts.push(claudeBubble(p)); }
+      else pending.push(p);
+    }
+    flush();
+    for (const r of t.replies) parts.push(`<div class="msg claude"><div class="av claude" aria-hidden="true">C</div><div class="bubble">${bubbleBody(r, t.work.length >= 10)}</div><time>${time(r.ts)}</time></div>`);
+    return `<section class="turn">${parts.join("")}</section>`;
+  }).join("");
+  return `<div class="head"><div><h1>${esc(s.title)}</h1><p class="mono">${short(s.started)}${s.branch ? " ・ " + esc(s.branch) : ""}</p></div><button class="btn" data-view="sessions">一覧へ</button></div>
+  <div class="chat">${html || `<p class="empty">まだ記録がありません。</p>`}</div>`;
+}
+
+function renderThread(id) {
+  let root = byId[id];
+  if (!root) return renderSessions();
+  while (root.re && byId[root.re]) root = byId[root.re];
+  const out = [];
+  const walk = (p, depth) => { out.push(postHtml(p, {reply: depth > 0, focus: p.id === id, inThread: true, withDate: true})); repliesOf(p.id).forEach(c => walk(c, depth + 1)); };
+  walk(root, 0);
+  return `<div class="head"><div><h1>スレッド</h1><p>返信のつながりを表示しています。</p></div><button class="btn" data-back="1">戻る</button></div>
+  <div class="feed">${out.join("")}</div>`;
+}
+
+function renderAside() {
+  document.getElementById("brand").innerHTML = `${esc(DATA.project)}<small>作業ログ</small>`;
+  document.getElementById("stats").innerHTML = `
+    <div><b>${POSTS.filter(p => p.author !== "auto").length}</b>投稿</div>
+    <div><b>${TAGS.length}</b>タグ</div>
+    <div class="warn"><b>${openQs.length}</b>未解決</div>
+    <div><b>${SESSIONS.length}</b>セッション</div>`;
+  document.getElementById("cloud").innerHTML = TAGS.slice(0, 16).map(t => tagBtn(t.tag)).join("") || `<span class="note">まだありません</span>`;
+  document.getElementById("generated").textContent = `生成: ${short(DATA.generated)}`;
+  document.getElementById("inboxCount").textContent = openQs.length || "";
+  document.getElementById("inboxCount").hidden = !openQs.length;
+}
+
+const backStack = [];
+function render() {
+  const m = document.getElementById("main");
+  const v = view.name;
+  m.innerHTML = v === "tags" ? renderTags() : v === "tag" ? renderTag(view.tag) : v === "inbox" ? renderInbox()
+    : v === "session" ? renderSession(view.id) : v === "thread" ? renderThread(view.id) : renderSessions();
+  if (v === "tags") drawTagGraph();
+  const section = {tag: "tags", session: "sessions", thread: null}[v] || v;
+  document.querySelectorAll(".nav [data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === section ? "page" : "false"));
+}
+function go(next) {
+  backStack.push(view);
+  view = next;
+  render();
+  window.scrollTo(0, 0);
+}
+
+document.addEventListener("click", e => {
+  if (e.target.closest("details")) return;
+  const el = e.target.closest("[data-tag],[data-view],[data-post],[data-session],[data-back],[data-fold]");
+  if (!el) return;
+  if (el.dataset.fold) {
+    openedFolds.has(el.dataset.fold) ? openedFolds.delete(el.dataset.fold) : openedFolds.add(el.dataset.fold);
+    return render();
+  }
+  if (el.dataset.tag) return go({name: "tag", tag: el.dataset.tag});
+  if (el.dataset.view) return go({name: el.dataset.view});
+  if (el.dataset.back) { view = backStack.pop() || {name: "sessions"}; return render(); }
+  if (el.dataset.session) return go({name: "session", id: el.dataset.session});
+  if (el.dataset.post && !e.target.closest("button,a,input")) return go({name: "thread", id: el.dataset.post});
+});
+document.addEventListener("keydown", e => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches("[tabindex='0']")) { e.preventDefault(); e.target.click(); }
+});
+let resizeTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (view.name === "tags") drawTagGraph(); }, 150);
+});
+
+renderAside();
+render();
+</script>

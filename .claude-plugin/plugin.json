@@ -1,14 +1,23 @@
 {
   "name": "worklog",
-  "version": "0.1.0",
-  "description": "Claude の作業内容を人間が読める Markdown ログとして .worklog/ に残し、セッションをまたいでプロジェクトの文脈を引き継ぐ",
-  "author": { "name": "GASHIRA-E" },
+  "version": "0.2.0",
+  "description": "Claude の作業の「いつ・なぜ」を投稿として記録し、タグで逆引きできるようにする。セッションをまたいで経緯を引き継ぐ",
+  "author": {
+    "name": "GASHIRA-E"
+  },
   "repository": "https://github.com/GASHIRA-E/claude-section-mcp",
-  "keywords": ["worklog", "logging", "handoff", "mcp"],
+  "keywords": [
+    "worklog",
+    "logging",
+    "handoff",
+    "mcp"
+  ],
   "mcpServers": {
     "worklog": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/server.js"]
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/dist/server.js"
+      ]
     }
   }
 }
