@@ -24,6 +24,10 @@ Claude Code 用のプラグインです。Claude と作ってきたものにつ�
 
 ## インストール
 
+Node.js 20 以上が必要です。
+
+### 手元の PC で使う
+
 Claude Code で：
 
 ```
@@ -31,7 +35,27 @@ Claude Code で：
 /plugin install worklog@gashira-e
 ```
 
-MCP サーバー・スキル・hook がまとめて入ります。Node.js 20 以上が必要です。
+MCP サーバー・スキル・hook がまとめて入ります。
+
+### クラウド（claude.ai/code）でも使う
+
+クラウドのセッションには手元でインストールしたプラグインが入らないため、**導入先リポジトリの `.claude/settings.json`** に書いてコミットします。手元の Claude Code でも、このリポジトリを開けば同じ設定で有効になります。
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "gashira-e": { "source": { "source": "github", "repo": "GASHIRA-E/claude-section-mcp" } }
+  },
+  "enabledPlugins": { "worklog@gashira-e": true },
+  "env": { "WORKLOG_TZ": "Asia/Tokyo" }
+}
+```
+
+### 導入前に決めておくこと
+
+- **記録をコミットするか**：既定では `.worklog/sessions/` をコミットします。チームのリポジトリでは、**あなたの指示文（最大1000字）や Claude の返答が、リポジトリを見られる全員に見える** ことになります。避けたい場合は `WORKLOG_COMMIT=false` にします（ただしクラウドのセッションでは、終了すると記録が消えます）
+- **指示に秘密情報を書かない**：指示文はそのまま記録されます
+- **要約のコスト**：長い指示・返答は Haiku で要約します（1ターン数百トークン程度）。不要なら `WORKLOG_SUMMARIZE=false`
 
 ## ファイル
 

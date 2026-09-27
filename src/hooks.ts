@@ -30,7 +30,12 @@ const COMMANDS_PER_POST = 5;
 const UNATTENDED_MODES = new Set(["auto", "bypassPermissions", "dontAsk"]);
 
 const READ_ONLY_COMMAND = /^(ls|ll|cat|head|tail|less|more|grep|rg|find|fd|tree|pwd|echo|printf|wc|which|type|file|stat|du|df|env|date|whoami|sed -n|awk|jq|git (status|log|diff|show|branch|remote|rev-parse|ls-files|blame))\b/;
-const TEST_COMMAND = /\b(test|tests|jest|vitest|mocha|pytest|rspec|phpunit|go test|cargo test|npm (run )?test|pnpm (run )?test|yarn (run )?test|bun test|deno test|playwright test|check)\b/;
+/** A test run is a test runner invoked at the start of some step of the command, not just the word "test" anywhere. */
+const TEST_RUNNER = /^(?:(?:npx|bunx|pnpm exec|pnpm dlx|yarn dlx)\s+)?(?:jest|vitest|mocha|ava|pytest|rspec|phpunit|playwright test)\b|^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b|^(?:node|deno|go|cargo|bun|dotnet|mix|swift)\s+(?:--)?test\b|^(?:python3?\s+-m\s+(?:pytest|unittest))\b|^make\s+test\b/;
+
+export function isTestCommand(command: string): boolean {
+  return command.split(/&&|\|\||;|\|/).some((step) => TEST_RUNNER.test(step.trim().replace(/^(?:cd\s+\S+|[A-Z_][A-Z0-9_]*=\S+)\s+/, "")));
+}
 
 export async function handleHook(event: string, input: HookInput, log: Worklog, timeZone?: string): Promise<HookResult> {
   const sid = input.session_id;
@@ -92,7 +97,7 @@ function describeToolUse(input: HookInput, root: string, failed: boolean): Pendi
   }
   if (tool === "Bash" && typeof ti.command === "string") {
     const command = truncate(ti.command, COMMAND_MAX);
-    if (TEST_COMMAND.test(ti.command)) return { test: { command, ok: !failed } };
+    if (isTestCommand(ti.command)) return { test: { command, ok: !failed } };
     if (READ_ONLY_COMMAND.test(ti.command.trim())) return undefined;
     return { command: failed ? `${command} (失敗)` : command };
   }

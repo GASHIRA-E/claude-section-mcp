@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, it } from "node:test";
-import { handleHook, type HookInput } from "../src/hooks.ts";
+import { handleHook, type HookInput, isTestCommand } from "../src/hooks.ts";
 import { buildContext, buildHookContext, openQuestions, postsForTag, relatedTags, tagStats } from "../src/query.ts";
 import { normalizeTags, Worklog } from "../src/store.ts";
 import { renderViewer, writeViewer } from "../src/viewer.ts";
@@ -176,6 +176,17 @@ describe("hooks", () => {
     await log.append(s, { author: "claude", kind: "summary", text: "前回のまとめ", next: ["続き"] });
     const out = await hook("SessionStart", { hook_event_name: "SessionStart" });
     assert.match(out.stdout ?? "", /前回のまとめ[\s\S]*続き/);
+  });
+});
+
+describe("test detection", () => {
+  it("recognises test runners, not the word 'test' in paths", () => {
+    for (const cmd of ["npm test", "npm run test -- --watch=false", "pnpm test", "node --test", "npx vitest run", "cd app && pytest -q", "go test ./...", "CI=1 yarn test", "cargo test", "python -m pytest tests/"]) {
+      assert.ok(isTestCommand(cmd), cmd);
+    }
+    for (const cmd of ["ls -la && cat package.json && ls lib test", "mkdir -p test", "cat test/tax.test.js", "git add test/", "npm install", "echo test"]) {
+      assert.ok(!isTestCommand(cmd), cmd);
+    }
   });
 });
 
