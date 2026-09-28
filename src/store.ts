@@ -239,6 +239,26 @@ export class Worklog {
       });
   }
 
+  /** Mark this Claude session's current turn as one to leave out of the log. */
+  async markQuiet(claudeSession: string): Promise<void> {
+    await fs.mkdir(this.stateDir, { recursive: true });
+    await fs.writeFile(this.quietPath(claudeSession), "");
+  }
+
+  /** Whether the current turn was marked quiet; clears the mark. */
+  async takeQuiet(claudeSession: string): Promise<boolean> {
+    try {
+      await fs.rm(this.quietPath(claudeSession));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private quietPath(claudeSession: string): string {
+    return path.join(this.stateDir, `quiet-${shortId(claudeSession)}`);
+  }
+
   private pendingPath(claudeSession: string): string {
     return path.join(this.stateDir, `pending-${shortId(claudeSession)}.jsonl`);
   }

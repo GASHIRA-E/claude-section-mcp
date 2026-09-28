@@ -29,6 +29,9 @@ const COMMANDS_PER_POST = 5;
 /** Permission modes in which nobody is watching each step, so the end-of-turn check applies. */
 const UNATTENDED_MODES = new Set(["auto", "bypassPermissions", "dontAsk"]);
 
+/** Opening the log (`/worklog:view`, or `/view` when unambiguous) is not work, so that turn is left out of the log. */
+const VIEW_COMMAND = /^\/(?:worklog:)?view(?:\s|$)/;
+
 const READ_ONLY_COMMAND = /^(ls|ll|cat|head|tail|less|more|grep|rg|find|fd|tree|pwd|echo|printf|wc|which|type|file|stat|du|df|env|date|whoami|sed -n|awk|jq|git (status|log|diff|show|branch|remote|rev-parse|ls-files|blame))\b/;
 /** A test run is a test runner invoked at the start of some step of the command, not just the word "test" anywhere. */
 const TEST_RUNNER = /^(?:(?:npx|bunx|pnpm exec|pnpm dlx|yarn dlx)\s+)?(?:jest|vitest|mocha|ava|pytest|rspec|phpunit|playwright test)\b|^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b|^(?:node|deno|go|cargo|bun|dotnet|mix|swift)\s+(?:--)?test\b|^(?:python3?\s+-m\s+(?:pytest|unittest))\b|^make\s+test\b/;
@@ -48,6 +51,12 @@ export async function handleHook(event: string, input: HookInput, log: Worklog, 
       if (!sid || !input.prompt?.trim()) return {};
       const session = await log.session(sid);
       await flushActivity(log, sid, session);
+      if (VIEW_COMMAND.test(input.prompt.trim())) {
+        await log.markQuiet(sid);
+        return {};
+      }
+      // A view turn that was interrupted never reached Stop; don't let its mark hide this turn.
+      await log.takeQuiet(sid);
       await log.append(session, { author: "human", kind: "prompt", text: clip(input.prompt, PROMPT_MAX) });
       return {};
     }
@@ -61,6 +70,12 @@ export async function handleHook(event: string, input: HookInput, log: Worklog, 
     case "Stop": {
       if (!sid) return {};
       const session = await log.session(sid);
+      if (await log.takeQuiet(sid)) {
+        // Whatever it took to open the log is not work either.
+        await log.takePending(sid);
+        await writeViewer(log).catch(() => undefined);
+        return {};
+      }
       await flushActivity(log, sid, session);
       if (await shouldBlockStop(log, session, input)) {
         // Claude keeps going and stops again, so its reply is recorded on that later Stop.

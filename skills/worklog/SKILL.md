@@ -62,7 +62,7 @@ description: Record what Claude does in this project, and why, in a tag-searchab
 
 ## ログを見せるとき
 
-人間が「ログを見たい」と言ったら `worklog_view` を呼ぶ。
+人間が「ログを見たい」と言ったら `worklog_view` を呼ぶ（`/worklog:view` コマンドでも同じことをする）。
 
 - 手元の PC なら、返ってきた `page`（`.worklog/view/index.html`）をブラウザで開くよう案内する
 - クラウド（claude.ai/code など）で Artifact を公開できるなら、`artifact` のファイルを Artifact として公開してリンクを渡す
